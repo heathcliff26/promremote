@@ -1,0 +1,65 @@
+---
+name: "Generate go test cover report"
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "**/*.go"
+
+jobs:
+  generate-reports:
+    name: Generate reports
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Token
+        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2.1.0
+        id: generate-token
+        with:
+          app_id: "${{ secrets.BOT_APP_ID }}"
+          private_key: "${{ secrets.BOT_APP_PRIVATE_KEY }}"
+
+      - name: Checkout main branch
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          token: "${{ steps.generate-token.outputs.token }}"
+          ref: "main"
+          path: "main"
+
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        with:
+          go-version: 'stable'
+
+      - name: Generate reports
+        run: |
+          ${GITHUB_WORKSPACE}/main/hack/coverprofile.sh
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          token: "${{ steps.generate-token.outputs.token }}"
+          ref: "gh-pages"
+          path: "gh-pages"
+
+      - name: Copy files to gh-pages
+        run: |
+          set -e
+          cp ${GITHUB_WORKSPACE}/main/coverprofiles/* ${GITHUB_WORKSPACE}/gh-pages/
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@8756aa072ef5b4a080af5dc8fef36c5d586e521d # v5.0.0
+        with:
+          commit_message: |
+            Updated go coverprofiles
+
+            Commit: ${{ github.sha }}
+          commit_options: "--signoff"
+          repository: "./gh-pages"
+          commit_user_name: "bot-ahsoka[bot]"
+          commit_user_email: "<bot-ahsoka[bot]@users.noreply.github.com>"
+          commit_author: "bot-ahsoka[bot] <bot-ahsoka[bot]@users.noreply.github.com>"
+          skip_dirty_check: false
+          skip_fetch: true
+          skip_checkout: true
+
