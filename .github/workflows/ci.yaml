@@ -18,10 +18,10 @@ on:
       - "go.sum"
       - "*.go"
       - ".golangci.yml"
-      - ".github/workflows/golangci.yaml"
+      - ".github/workflows/ci.yaml"
 
 jobs:
-  golangci:
+  lint:
     name: lint
     runs-on: ubuntu-latest
     steps:
@@ -38,3 +38,17 @@ jobs:
           version: latest
           args: --config=.golangci.yml
           skip-cache: true
+
+  test:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        with:
+          go-version: 'stable'
+          cache-dependency-path: apps/simple-fileserver/go.sum
+
+      - name: run tests
+        run: go test -v ./...
