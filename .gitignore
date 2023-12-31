@@ -1,2 +1,5 @@
 # Generated go-test coverage reports
 coverprofiles/
+
+# Generated artifacts
+out/
