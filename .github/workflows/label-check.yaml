@@ -15,7 +15,6 @@ on:
 
 jobs:
   check-labels:
-    name: Check Labels
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read

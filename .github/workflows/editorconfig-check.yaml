@@ -8,7 +8,6 @@ on:
 
 jobs:
   check-editorconfig:
-    name: Run editorconfig-checker
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,4 +16,4 @@ jobs:
       - name: Run editorconfig-checker
         uses: docker://mstruebing/editorconfig-checker:2.7.2
         with:
-          args: ec --exclude="\.git\/(.*)|(.*)\/?vendor\/(.*)"
+          args: ec --exclude="\.git\/(.*)|vendor\/(.*)"

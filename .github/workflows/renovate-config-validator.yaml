@@ -22,8 +22,7 @@ env:
   RENOVATE_REPO_CONFIG_FILE: .github/renovate.json5
 
 jobs:
-  renovate:
-    name: Validate config
+  validate-renovate-config:
     runs-on: ubuntu-latest
     steps:
       - name: Generate Token
