@@ -6,7 +6,7 @@
       "groupSlug": "all-minor-patch",
       "matchPackagePatterns": ["*"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
-      "matchCurrentVersion": "!/^0/",
+      "matchCurrentVersion": "!/^v?0/",
     },
   ]
 }
