@@ -4,8 +4,7 @@
     {
       "groupName": "All non-breaking changes",
       "groupSlug": "all-minor-patch",
-      "matchPackagePatterns": ["*"],
-      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
     },
   ]
 }

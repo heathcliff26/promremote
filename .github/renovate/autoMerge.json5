@@ -3,11 +3,9 @@
   "packageRules": [
     {
       "description": "Auto merge all non-breaking changes",
-      "matchManagers": ["*"],
-      "matchDatasources": ["*"],
       "automerge": true,
       "automergeType": "branch",
-      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
     },
   ]
 }
