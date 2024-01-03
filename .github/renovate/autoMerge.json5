@@ -2,20 +2,13 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "packageRules": [
     {
-      "description": "Auto merge GitHub Actions",
-      "matchManagers": ["github-actions"],
-      "matchDatasources": ["github-tags"],
+      "description": "Auto merge all non-breaking changes",
+      "matchManagers": ["*"],
+      "matchDatasources": ["*"],
       "automerge": true,
       "automergeType": "branch",
-      "matchUpdateTypes": ["minor", "patch"]
-    },
-    {
-      "description": "Auto merge GitHub Actions (Docker)",
-      "matchDatasources": ["docker"],
-      "matchFileNames": [".github/workflows/*.yaml", ".github/workflows/*.yml"],
-      "automerge": true,
-      "automergeType": "branch",
-      "matchUpdateTypes": ["minor", "patch"]
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchCurrentVersion": "!/^0/",
     },
   ]
 }

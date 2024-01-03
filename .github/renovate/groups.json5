@@ -2,10 +2,11 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "packageRules": [
     {
-      "groupName": "all non-major dependencies",
+      "groupName": "All non-breaking changes",
       "groupSlug": "all-minor-patch",
       "matchPackagePatterns": ["*"],
-      "matchUpdateTypes": ["minor", "patch"]
-    }
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchCurrentVersion": "!/^0/",
+    },
   ]
 }
