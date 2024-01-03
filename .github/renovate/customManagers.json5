@@ -3,17 +3,6 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Extract Dockerfile dependencies from Enviroment Variables",
-      "fileMatch": [
-        "(^|/)Dockerfile$",
-        "(^|/)Dockerfile\\.[^/]*$"
-      ],
-      "matchStrings": [
-        "#\\srenovate:\\sdatasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?( extractVersion=(?<extractVersion>.*?))?\\s(ENV|ARG) .*?_VERSION=(?<currentValue>.*)\\s"
-      ]
-    },
-    {
-      "customType": "regex",
       "description": "Process docker:// actions for github workflow",
       "fileMatch": [
         ".github/workflows/.+\\.ya?ml$",
