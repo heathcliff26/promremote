@@ -3,6 +3,8 @@ name: "Editorconfig Check"
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["main", "renovate/*"]
   pull_request:
     branches: ["main"]
   merge_group:
