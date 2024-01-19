@@ -1,6 +1,6 @@
 module github.com/heathcliff26/promremote
 
-go 1.21.6
+go 1.21
 
 require (
 	github.com/golang/snappy v0.0.4
