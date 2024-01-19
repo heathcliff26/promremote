@@ -1,15 +1,15 @@
 ---
-name: Run golangci
+name: CI
 
 on:
   workflow_dispatch:
-  workflow_call:
   push:
     branches: ["main", "renovate/*"]
     paths:
       - "go.mod"
       - "go.sum"
       - "*.go"
+      - "**/*.go"
       - ".golangci.yml"
   pull_request:
     branches: ["main"]
@@ -18,35 +18,7 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-
-      - name: Setup Golang
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
-        with:
-          go-version: 'stable'
-          cache-dependency-path: go.sum
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
-        with:
-          version: latest
-          args: --config=.golangci.yml
-          skip-cache: true
+    uses: heathcliff26/ci/.github/workflows/golang-lint.yaml@main
 
   unit-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-
-      - name: Setup Golang
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
-        with:
-          go-version: 'stable'
-          cache-dependency-path: go.sum
-
-      - name: run tests
-        run: go test -v ./...
+    uses: heathcliff26/ci/.github/workflows/golang-unit-tests.yaml@main

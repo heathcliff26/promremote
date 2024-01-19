@@ -4,12 +4,12 @@ name: "Renovate"
 on:
   workflow_dispatch:
     inputs:
-      dryRun:
-        description: Dry-Run
+      dry-run:
+        description: "dry-run"
         default: "false"
         required: false
-      logLevel:
-        description: Log-Level
+      log-level:
+        description: "log-level"
         default: debug
         required: false
   schedule:
@@ -19,39 +19,28 @@ on:
     paths:
       - .github/renovate-bot.json5
       - .github/renovate.json5
-      - .github/renovate/**.json5
 
 env:
   LOG_LEVEL: debug
   RENOVATE_DRY_RUN: false
-  RENOVATE_CONFIG_FILE: .github/renovate-bot.json5
-  RENOVATE_AUTODISCOVER: true
-  RENOVATE_AUTODISCOVER_FILTER: "${{ github.repository }}"
 
 jobs:
-  renovate:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      dry-run: ${{ steps.config.outputs.dry-run }}
+      log-level: "${{ steps.config.outputs.log-level }}"
     steps:
-      - name: Generate Token
-        uses: actions/create-github-app-token@f04aa94d10cf56334d1c580e077ce2e3569e805d # v1.6.3
-        id: app-token
-        with:
-          app-id: "${{ secrets.BOT_APP_ID }}"
-          private-key: "${{ secrets.BOT_APP_PRIVATE_KEY }}"
-
-      - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-        with:
-          token: "${{ steps.app-token.outputs.token }}"
-
-      - name: Override default config from dispatch variables
-        shell: bash
+      - name: Generate config from dispatch variables or defaults
+        id: config
         run: |
-          echo "RENOVATE_DRY_RUN=${{ github.event.inputs.dryRun || env.RENOVATE_DRY_RUN }}" >> "${GITHUB_ENV}"
-          echo "LOG_LEVEL=${{ github.event.inputs.logLevel || env.LOG_LEVEL }}" >> "${GITHUB_ENV}"
+          echo "dry-run=${{ github.event.inputs.dry-run || env.RENOVATE_DRY_RUN }}" >> "$GITHUB_OUTPUT"
+          echo "log-level=${{ github.event.inputs.log-level || env.LOG_LEVEL }}" >> "$GITHUB_OUTPUT"
 
-      - name: Renovate
-        uses: renovatebot/github-action@f9c81dddc9b589e4e6ae0326d1e36f6bc415d230 # v39.2.4
-        with:
-          configurationFile: "${{ env.RENOVATE_CONFIG_FILE }}"
-          token: "${{ steps.app-token.outputs.token }}"
+  renovate:
+    needs: prepare
+    uses: heathcliff26/ci/.github/workflows/renovate.yaml@main
+    with:
+      dry-run: ${{ needs.prepare.outputs.dry-run }}
+      log-level: "${{ needs.prepare.outputs.log-level }}"
+    secrets: inherit

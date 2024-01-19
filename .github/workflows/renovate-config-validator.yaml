@@ -8,41 +8,15 @@ on:
     paths:
       - .github/renovate-bot.json5
       - .github/renovate.json5
-      - .github/renovate/**.json5
   pull_request:
     branches: ["main"]
     paths:
       - .github/renovate-bot.json5
       - .github/renovate.json5
-      - .github/renovate/**.json5
       - .github/workflows/renovate-config-validator.yaml
-
-env:
-  RENOVATE_BOT_CONFIG_FILE: .github/renovate-bot.json5
-  RENOVATE_REPO_CONFIG_FILE: .github/renovate.json5
+  merge_group:
+    branches: ["main"]
 
 jobs:
   validate-renovate-config:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Generate Token
-        uses: actions/create-github-app-token@f04aa94d10cf56334d1c580e077ce2e3569e805d # v1.6.3
-        id: app-token
-        with:
-          app-id: "${{ secrets.BOT_APP_ID }}"
-          private-key: "${{ secrets.BOT_APP_PRIVATE_KEY }}"
-
-      - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-        with:
-          token: "${{ steps.app-token.outputs.token }}"
-
-      - name: Validate bot config
-        uses: docker://renovate/renovate:37.83.5-slim
-        with:
-          args: renovate-config-validator --strict "${{ env.RENOVATE_BOT_CONFIG_FILE }}"
-
-      - name: Validate repository
-        uses: docker://renovate/renovate:37.83.5-slim
-        with:
-          args: renovate-config-validator --strict "${{ env.RENOVATE_REPO_CONFIG_FILE }}"
+    uses: heathcliff26/ci/.github/workflows/renovate-config-validator.yaml@main
