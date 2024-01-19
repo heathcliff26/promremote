@@ -6,53 +6,9 @@ on:
   schedule:
     - cron: "0 0 * * 0"
 
-env:
-  WORKFLOW_ISSUE_TITLE: "Link Checker Dashboard 🔗"
-
 jobs:
   check-links:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Generate Token
-        uses: actions/create-github-app-token@f04aa94d10cf56334d1c580e077ce2e3569e805d # v1.6.3
-        id: app-token
-        with:
-          app-id: "${{ secrets.BOT_APP_ID }}"
-          private-key: "${{ secrets.BOT_APP_PRIVATE_KEY }}"
-
-      - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-        with:
-          token: "${{ steps.app-token.outputs.token }}"
-
-      - name: Scan for broken links
-        uses: lycheeverse/lychee-action@c3089c702fbb949e3f7a8122be0c33c017904f9b # v1.9.1
-        id: lychee
-        env:
-          GITHUB_TOKEN: "${{ steps.app-token.outputs.token }}"
-        with:
-          args: --verbose --no-progress --exclude-path vendor --exclude-mail './**/*.md'
-
-      - name: Find Link Checker Issue
-        id: find-issue
-        shell: bash
-        env:
-          GH_TOKEN: "${{ steps.app-token.outputs.token }}"
-        run: |
-          issue_number=$( \
-              gh issue list \
-                  --search "in:title ${{ env.WORKFLOW_ISSUE_TITLE }}" \
-                  --state open \
-                  --json number \
-                  | jq --raw-output '.[0].number' \
-          )
-          echo "issue-number=${issue_number}" >> $GITHUB_OUTPUT
-          echo "${issue_number}"
-
-      - name: Update Issue
-        uses: peter-evans/create-issue-from-file@433e51abf769039ee20ba1293a088ca19d573b7f # v4.0.1
-        with:
-          title: "${{ env.WORKFLOW_ISSUE_TITLE }}"
-          issue-number: "${{ steps.find-issue.outputs.issue-number || '' }}"
-          content-filepath: ./lychee/out.md
-          token: "${{ steps.app-token.outputs.token }}"
+    uses: heathcliff26/ci/.github/workflows/link-check.yaml@main
+    secrets: inherit
+    with:
+      exclude-paths: "vendor"

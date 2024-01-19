@@ -3,7 +3,6 @@
 name: "Labels Check"
 
 on:
-  workflow_dispatch:
   pull_request:
     branches: ["main"]
     types:
@@ -15,13 +14,6 @@ on:
 
 jobs:
   check-labels:
-    runs-on: ubuntu-latest
     permissions:
       pull-requests: read
-    steps:
-      - name: Check for do-not-merge
-        id: do-not-merge
-        uses: docker://agilepathway/pull-request-label-checker:v1.6.13
-        with:
-          repo_token: ${{ github.token }}
-          none_of: do-not-merge
+    uses: heathcliff26/ci/.github/workflows/label-check.yaml@main
