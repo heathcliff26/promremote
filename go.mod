@@ -6,7 +6,7 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/client_model v0.6.1
-	github.com/prometheus/prometheus v0.53.0
+	github.com/prometheus/prometheus v0.53.1
 	github.com/stretchr/testify v1.9.0
 )
 
