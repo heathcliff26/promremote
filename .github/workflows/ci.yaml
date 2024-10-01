@@ -22,5 +22,3 @@ jobs:
 
   unit-tests:
     uses: heathcliff26/ci/.github/workflows/golang-unit-tests.yaml@main
-    with:
-      cmd: go test -v -race ./...
