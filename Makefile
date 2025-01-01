@@ -14,10 +14,18 @@ coverprofile:
 lint:
 	golangci-lint run -v
 
+fmt:
+	gofmt -s -w ./promremote
+
+validate:
+	hack/validate.sh
+
 .PHONY: \
 	default \
 	test \
 	update-deps \
 	coverprofile \
 	lint \
+	fmt \
+	validate \
 	$(NULL)
