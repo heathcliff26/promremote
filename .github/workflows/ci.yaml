@@ -22,3 +22,9 @@ jobs:
 
   unit-tests:
     uses: heathcliff26/ci/.github/workflows/golang-unit-tests.yaml@main
+
+  validate:
+    uses: heathcliff26/ci/.github/workflows/golang-build.yaml@main
+    with:
+      cache: false
+      cmd: "make validate"
