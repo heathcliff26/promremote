@@ -1,11 +1,15 @@
 package promremote
 
 import (
+	"bytes"
 	"encoding/base64"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -160,4 +164,26 @@ func TestCollect(t *testing.T) {
 
 	assert.Nil(err)
 	assert.NotEmpty(ts)
+}
+
+func TestRun(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewBuildInfoCollector())
+
+	c, _ := NewWriteClient("testendpoint", "test", "test", reg)
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+	})
+
+	quit := make(chan bool)
+	c.Run(time.Second, quit)
+
+	<-time.After(time.Second * 2)
+	quit <- true
+
+	output := buf.String()
+	assert.Contains(t, output, "ERROR Failed to send metrics to remote endpoint err=", "Should output error to log and not fail")
 }
