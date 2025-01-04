@@ -3,7 +3,7 @@ SHELL := bash
 default:
 
 test:
-	go test -v -race ./...
+	go test -v -race -coverprofile=coverprofile.out ./...
 
 update-deps:
 	hack/update-deps.sh
@@ -20,6 +20,9 @@ fmt:
 validate:
 	hack/validate.sh
 
+clean:
+	rm -rf coverprofiles coverprofile.out
+
 .PHONY: \
 	default \
 	test \
@@ -28,4 +31,5 @@ validate:
 	lint \
 	fmt \
 	validate \
+	clean \
 	$(NULL)
