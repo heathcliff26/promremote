@@ -248,9 +248,9 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title
                 }</span> else<span class="cov5" title="3"> if m.Gauge != nil </span><span class="cov5" title="3">{
                         value = m.Gauge.GetValue()
                 }</span> else<span class="cov0" title="0"> if m.Untyped != nil </span><span class="cov0" title="0">{
-                        value = m.Counter.GetValue()
+                        value = m.Untyped.GetValue()
                 }</span> else<span class="cov0" title="0"> {
-                        return nil, fmt.Errorf("Unknown metric type")
+                        return nil, fmt.Errorf("unknown metric type")
                 }</span>
                 <span class="cov5" title="3">ts.Samples = []prompb.Sample{
                         {
