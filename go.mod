@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/golang/snappy v1.0.0
-	github.com/prometheus/client_golang v1.21.0
+	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/client_model v0.6.1
 	github.com/prometheus/prometheus v0.302.1
 	github.com/stretchr/testify v1.10.0
