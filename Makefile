@@ -26,6 +26,10 @@ fmt:
 validate:
 	hack/validate.sh
 
+# Scan code for vulnerabilities using gosec
+gosec:
+	gosec ./...
+
 # Remove generated files and artifacts
 clean:
 	rm -rf coverprofiles coverprofile.out
@@ -46,6 +50,7 @@ help:
 	lint \
 	fmt \
 	validate \
+	gosec \
 	clean \
 	help \
 	$(NULL)
