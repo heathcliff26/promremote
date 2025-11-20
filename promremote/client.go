@@ -103,7 +103,7 @@ func (c *Client) post(ts []prompb.TimeSeries) error {
 		return err
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
+	if res.StatusCode < 200 || res.StatusCode > 299 {
 		return NewErrRemoteWriteFailed(res.StatusCode, req.Body)
 	}
 
