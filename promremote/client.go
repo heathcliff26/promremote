@@ -135,7 +135,7 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) {
 			return nil, err
 		}
 
-		// Extract lables
+		// Extract labels
 		labels := make([]prompb.Label, 0, len(m.Label)+3)
 		labels = append(labels, prompb.Label{
 			Name:  "__name__",
@@ -149,8 +149,9 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) {
 			Name:  "job",
 			Value: c.job,
 		})
+		dropLabels := []string{"__name__", "instance", "job"}
 		for _, l := range m.Label {
-			if !slices.Contains([]string{"__name__", "instance", "job"}, l.GetName()) {
+			if !slices.Contains(dropLabels, l.GetName()) {
 				labels = append(labels, prompb.Label{
 					Name:  l.GetName(),
 					Value: l.GetValue(),
