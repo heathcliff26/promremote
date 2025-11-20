@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (87.8%)</option>
+				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (87.9%)</option>
 				
 				<option value="file1">github.com/heathcliff26/promremote/promremote/errors.go (46.2%)</option>
 				
@@ -88,6 +88,7 @@ import (
         "log/slog"
         "net/http"
         "regexp"
+        "slices"
         "time"
 
         "github.com/golang/snappy"
@@ -217,25 +218,27 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title
                 }</span>
 
                 // Extract lables
-                <span class="cov5" title="3">labels := make([]prompb.Label, len(m.Label)+3)
-                labels[0] = prompb.Label{
+                <span class="cov5" title="3">labels := make([]prompb.Label, 0, len(m.Label)+3)
+                labels = append(labels, prompb.Label{
                         Name:  "__name__",
                         Value: fqName[1],
-                }
-                labels[1] = prompb.Label{
+                })
+                labels = append(labels, prompb.Label{
                         Name:  "instance",
                         Value: c.instance,
-                }
-                labels[2] = prompb.Label{
+                })
+                labels = append(labels, prompb.Label{
                         Name:  "job",
                         Value: c.job,
+                })
+                for _, l := range m.Label </span><span class="cov10" title="9">{
+                        if !slices.Contains([]string{"__name__", "instance", "job"}, l.GetName()) </span><span class="cov10" title="9">{
+                                labels = append(labels, prompb.Label{
+                                        Name:  l.GetName(),
+                                        Value: l.GetValue(),
+                                })
+                        }</span>
                 }
-                for i, l := range m.Label </span><span class="cov10" title="9">{
-                        labels[i+3] = prompb.Label{
-                                Name:  l.GetName(),
-                                Value: l.GetValue(),
-                        }
-                }</span>
 
                 <span class="cov5" title="3">ts := prompb.TimeSeries{
                         Labels: labels,
