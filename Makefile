@@ -4,7 +4,7 @@ default: test
 
 # Run unit-tests
 test:
-	go test -v -race -coverprofile=coverprofile.out ./...
+	go test -v -race -coverprofile=coverprofile.out ./promremote/...
 
 # Update project dependencies
 update-deps:
