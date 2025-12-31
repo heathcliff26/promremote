@@ -31,8 +31,8 @@ func TestNewWriteClient(t *testing.T) {
 
 			require := require.New(t)
 
-			require.Nil(c, "Should not return a client")
 			require.ErrorContains(err, tCase.Error, "Should return the correct error")
+			require.Nil(c, "Should not return a client")
 		})
 	}
 
@@ -46,35 +46,22 @@ func TestNewWriteClient(t *testing.T) {
 	})
 }
 
-func TestClientGet(t *testing.T) {
+func TestClientRegistry(t *testing.T) {
 	c, _ := NewWriteClient("test-endpoint", "test", "test", prometheus.NewRegistry())
 	var cNil *Client = nil
-	t.Run("Endpoint", func(t *testing.T) {
-		assert := assert.New(t)
 
-		res := c.Endpoint()
-		assert.NotEmpty(res, "Should return endpoint")
-		assert.NotPanics(func() {
-			assert.Empty(cNil.Endpoint(), "Should return an empty string")
-		}, "Should not panic when called on nil client")
-	})
+	assert := assert.New(t)
 
-	t.Run("Registry", func(t *testing.T) {
-		assert := assert.New(t)
-
-		res := c.Registry()
-		assert.NotEmpty(res)
-		res = cNil.Registry()
-		assert.Empty(res)
-		assert.NotPanics(func() {
-			assert.Nil(cNil.Registry(), "Should return no registry")
-		}, "Should not panic when called on nil client")
-	})
+	res := c.Registry()
+	assert.NotEmpty(res)
+	res = cNil.Registry()
+	assert.Empty(res)
+	assert.NotPanics(func() {
+		assert.Nil(cNil.Registry(), "Should return no registry")
+	}, "Should not panic when called on nil client")
 }
 
-func TestClientSetBasicAuth(t *testing.T) {
-	c, _ := NewWriteClient("test-endpoint", "test", "test", prometheus.NewRegistry())
-
+func TestClientWithBasicAuth(t *testing.T) {
 	tMatrix := []struct {
 		Username, Password string
 		ShouldError        bool
@@ -86,13 +73,16 @@ func TestClientSetBasicAuth(t *testing.T) {
 	}
 
 	assert := assert.New(t)
+	require := require.New(t)
 
 	for _, tCase := range tMatrix {
-		err := c.SetBasicAuth(tCase.Username, tCase.Password)
+		c, err := NewWriteClient("test-endpoint", "test", "test", prometheus.NewRegistry(), WithBasicAuth(tCase.Username, tCase.Password))
 		if tCase.ShouldError {
+			assert.Nil(c, "Should not return a client")
 			assert.ErrorContains(err, "Need both username and password, at least one of them is empty", "Should return error")
 		} else {
-			assert.NoError(err, "Should not return an error")
+			require.NotNil(c, "Should return a client")
+			require.NoError(err, "Should not return an error")
 			assert.Equal(tCase.Username, c.username, "Username should be set")
 			assert.Equal(tCase.Password, c.password, "Password should be set")
 		}
@@ -131,7 +121,7 @@ func TestUrl(t *testing.T) {
 		url, err := c.url()
 
 		assert.NoError(err, "Should not return an error")
-		assert.Equal(c.Endpoint(), url.String(), "Should return correct URL")
+		assert.Equal(c.endpoint, url.String(), "Should return correct URL")
 	})
 	t.Run("WithBasicAuth", func(t *testing.T) {
 		assert := assert.New(t)

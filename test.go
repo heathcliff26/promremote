@@ -61,15 +61,14 @@ func main() {
 		}
 	}()
 
-	rw, err := promremote.NewWriteClient(cfg.URL, "promremote-test", "promremote-test", reg)
+	var opts []promremote.ClientOption
+	if cfg.Username != "" {
+		opts = append(opts, promremote.WithBasicAuth(cfg.Username, cfg.Password))
+	}
+
+	rw, err := promremote.NewWriteClient(cfg.URL, "promremote-test", "promremote-test", reg, opts...)
 	if err != nil {
 		panic(err)
-	}
-	if cfg.Username != "" {
-		err = rw.SetBasicAuth(cfg.Username, cfg.Password)
-		if err != nil {
-			panic(err)
-		}
 	}
 
 	rwQuit := make(chan bool)
