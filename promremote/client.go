@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/timestamp"
