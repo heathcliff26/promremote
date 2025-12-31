@@ -3,7 +3,7 @@ module github.com/heathcliff26/promremote
 go 1.24.0
 
 require (
-	github.com/golang/snappy v1.0.0
+	github.com/klauspost/compress v1.18.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/prometheus v0.308.1
