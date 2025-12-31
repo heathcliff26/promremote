@@ -2,5 +2,8 @@
 coverprofiles/
 coverprofile.out
 
+# Ignore files created for testing
+test-config.json
+
 # Generated artifacts
 out/
