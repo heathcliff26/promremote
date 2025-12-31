@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (88.0%)</option>
+				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (87.8%)</option>
 				
 				<option value="file1">github.com/heathcliff26/promremote/promremote/errors.go (46.2%)</option>
 				
@@ -113,20 +113,20 @@ type MetricData struct {
         Value     float64
 }
 
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry) (*Client, error) <span class="cov10" title="9">{
+func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry) (*Client, error) <span class="cov8" title="9">{
         if endpoint == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingEndpoint{}
         }</span>
-        <span class="cov9" title="8">if instance == "" </span><span class="cov1" title="1">{
+        <span class="cov8" title="8">if instance == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingInstance{}
         }</span>
         <span class="cov8" title="7">if job == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingJob{}
         }</span>
-        <span class="cov8" title="6">if reg == nil </span><span class="cov1" title="1">{
+        <span class="cov7" title="6">if reg == nil </span><span class="cov1" title="1">{
                 return nil, ErrMissingRegistry{}
         }</span>
-        <span class="cov7" title="5">return &amp;Client{
+        <span class="cov6" title="5">return &amp;Client{
                 endpoint: endpoint,
                 instance: instance,
                 job:      job,
@@ -134,11 +134,11 @@ func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry) (*
         }, nil</span>
 }
 
-func (c *Client) Endpoint() string <span class="cov8" title="6">{
+func (c *Client) Endpoint() string <span class="cov8" title="7">{
         if c == nil </span><span class="cov1" title="1">{
                 return ""
         }</span>
-        <span class="cov7" title="5">return c.endpoint</span>
+        <span class="cov7" title="6">return c.endpoint</span>
 }
 
 func (c *Client) Registry() *prometheus.Registry <span class="cov3" title="2">{
@@ -150,7 +150,7 @@ func (c *Client) Registry() *prometheus.Registry <span class="cov3" title="2">{
 
 // Set credentials needed for basic auth, return error if not provided
 func (c *Client) SetBasicAuth(username, password string) error <span class="cov6" title="4">{
-        if username == "" || password == "" </span><span class="cov5" title="3">{
+        if username == "" || password == "" </span><span class="cov4" title="3">{
                 return ErrMissingAuthCredentials{}
         }</span>
         <span class="cov1" title="1">c.username = username
@@ -159,30 +159,30 @@ func (c *Client) SetBasicAuth(username, password string) error <span class="cov6
 }
 
 // Send TimeSeries to remote_write endpoint
-func (c *Client) post(ts []prompb.TimeSeries) error <span class="cov6" title="4">{
+func (c *Client) post(ts []prompb.TimeSeries) error <span class="cov6" title="5">{
         wr := prompb.WriteRequest{Timeseries: ts}
         data, err := wr.Marshal()
         if err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
-        <span class="cov6" title="4">body := snappy.Encode(nil, data)
+        <span class="cov6" title="5">body := snappy.Encode(nil, data)
 
         req, err := http.NewRequest(http.MethodPost, c.Endpoint(), bytes.NewReader(body))
         if err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
-        <span class="cov6" title="4">req.Header.Add("Content-Encoding", "snappy")
+        <span class="cov6" title="5">req.Header.Add("Content-Encoding", "snappy")
         req.Header.Add("Content-Type", "application/x-protobuf")
         req.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
         if c.username != "" </span><span class="cov1" title="1">{
                 req.SetBasicAuth(c.username, c.password)
         }</span>
 
-        <span class="cov6" title="4">httpClient := http.Client{
+        <span class="cov6" title="5">httpClient := http.Client{
                 Timeout: time.Duration(10 * time.Second),
         }
         res, err := httpClient.Do(req)
-        if err != nil </span><span class="cov3" title="2">{
+        if err != nil </span><span class="cov4" title="3">{
                 return err
         }</span>
         <span class="cov3" title="2">defer res.Body.Close()
@@ -194,15 +194,15 @@ func (c *Client) post(ts []prompb.TimeSeries) error <span class="cov6" title="4"
 }
 
 // Collect metrics from registry and convert them to TimeSeries
-func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title="3">{
+func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov6" title="4">{
         ch := make(chan prometheus.Metric)
-        go func() </span><span class="cov5" title="3">{
+        go func() </span><span class="cov6" title="4">{
                 c.registry.Collect(ch)
                 close(ch)
         }</span>()
 
-        <span class="cov5" title="3">var res []prompb.TimeSeries
-        for metric := range ch </span><span class="cov5" title="3">{
+        <span class="cov6" title="4">var res []prompb.TimeSeries
+        for metric := range ch </span><span class="cov6" title="4">{
                 // Extract name of metric
                 regex := regexp.MustCompile("fqName: \"([a-zA-Z_:][a-zA-Z0-9_:]*)\"")
                 fqName := regex.FindStringSubmatch(metric.Desc().String())
@@ -211,14 +211,14 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title
                 }</span>
 
                 // Convert metric to readable format
-                <span class="cov5" title="3">m := &amp;dto.Metric{}
+                <span class="cov6" title="4">m := &amp;dto.Metric{}
                 err := metric.Write(m)
                 if err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
 
                 // Extract labels
-                <span class="cov5" title="3">labels := make([]prompb.Label, 0, len(m.Label)+3)
+                <span class="cov6" title="4">labels := make([]prompb.Label, 0, len(m.Label)+3)
                 labels = append(labels, prompb.Label{
                         Name:  "__name__",
                         Value: fqName[1],
@@ -232,8 +232,8 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title
                         Value: c.job,
                 })
                 dropLabels := []string{"__name__", "instance", "job"}
-                for _, l := range m.Label </span><span class="cov10" title="9">{
-                        if !slices.Contains(dropLabels, l.GetName()) </span><span class="cov10" title="9">{
+                for _, l := range m.Label </span><span class="cov10" title="12">{
+                        if !slices.Contains(dropLabels, l.GetName()) </span><span class="cov10" title="12">{
                                 labels = append(labels, prompb.Label{
                                         Name:  l.GetName(),
                                         Value: l.GetValue(),
@@ -241,7 +241,7 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title
                         }</span>
                 }
 
-                <span class="cov5" title="3">ts := prompb.TimeSeries{
+                <span class="cov6" title="4">ts := prompb.TimeSeries{
                         Labels: labels,
                 }
 
@@ -249,14 +249,14 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title
                 var value float64
                 if m.Counter != nil </span><span class="cov0" title="0">{
                         value = m.Counter.GetValue()
-                }</span> else<span class="cov5" title="3"> if m.Gauge != nil </span><span class="cov5" title="3">{
+                }</span> else<span class="cov6" title="4"> if m.Gauge != nil </span><span class="cov6" title="4">{
                         value = m.Gauge.GetValue()
                 }</span> else<span class="cov0" title="0"> if m.Untyped != nil </span><span class="cov0" title="0">{
                         value = m.Untyped.GetValue()
                 }</span> else<span class="cov0" title="0"> {
                         return nil, fmt.Errorf("unknown metric type")
                 }</span>
-                <span class="cov5" title="3">ts.Samples = []prompb.Sample{
+                <span class="cov6" title="4">ts.Samples = []prompb.Sample{
                         {
                                 Value:     value,
                                 Timestamp: timestamp.FromTime(time.Now()),
@@ -265,36 +265,33 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) <span class="cov5" title
 
                 res = append(res, ts)</span>
         }
-        <span class="cov5" title="3">return res, nil</span>
+        <span class="cov6" title="4">return res, nil</span>
 }
 
 // Collect metrics and send them to remote server in interval.
 // Does not block main thread execution
 func (c *Client) Run(interval time.Duration, quit chan bool) <span class="cov1" title="1">{
         go func() </span><span class="cov1" title="1">{
-                for </span><span class="cov3" title="2">{
+                ticker := time.NewTicker(interval)
+                defer ticker.Stop()
+                slog.Debug("Starting remote_write client")
+                for </span><span class="cov4" title="3">{
                         ts, err := c.collect()
                         if err != nil </span><span class="cov0" title="0">{
                                 slog.Error("Failed to collect metrics for remote_write", "err", err)
                         }</span>
-                        <span class="cov3" title="2">err = c.post(ts)
-                        if err != nil </span><span class="cov3" title="2">{
+                        <span class="cov4" title="3">err = c.post(ts)
+                        if err != nil </span><span class="cov4" title="3">{
                                 slog.Error("Failed to send metrics to remote endpoint", "err", err)
                         }</span> else<span class="cov0" title="0"> {
-                                slog.Debug("Successfully send metrics via remote_write")
+                                slog.Debug("Successfully sent metrics via remote_write")
                         }</span>
+                        <span class="cov4" title="3">select </span>{
+                        case &lt;-ticker.C:<span class="cov3" title="2"></span>
 
-                        <span class="cov3" title="2">var elapsedTime time.Duration = 0
-                        for elapsedTime &lt; interval </span><span class="cov3" title="2">{
-                                timer := time.NewTimer(1 * time.Second)
-                                select </span>{
-                                case &lt;-timer.C:<span class="cov1" title="1">
-                                        elapsedTime += time.Duration(1 * time.Second)</span>
-                                case &lt;-quit:<span class="cov1" title="1">
-                                        timer.Stop()
-                                        slog.Info("Received stop signal, shutting down remote_write client")
-                                        return</span>
-                                }
+                        case &lt;-quit:<span class="cov1" title="1">
+                                slog.Info("Received stop signal, shutting down remote_write client")
+                                return</span>
                         }
                 }
         }()
