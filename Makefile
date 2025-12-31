@@ -8,7 +8,7 @@ test:
 
 # Update project dependencies
 update-deps:
-	hack/update-deps.sh
+	go mod tidy
 
 # Generate coverage profile
 coverprofile:
