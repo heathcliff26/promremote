@@ -27,9 +27,33 @@ type Client struct {
 	username string
 	password string
 	registry *prometheus.Registry
+
+	client *remote.API
 }
 
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry) (*Client, error) {
+type ClientOption func(*Client) error
+
+// WithBasicAuth configures basic authentication when sending metrics.
+// Returns an error if username or password are empty.
+func WithBasicAuth(username, password string) ClientOption {
+	return func(c *Client) error {
+		if username == "" || password == "" {
+			return ErrMissingAuthCredentials{}
+		}
+		c.username = username
+		c.password = password
+		return nil
+	}
+}
+
+// NewWriteClient creates a new remote_write client.
+// Parameters:
+//   - endpoint: URL of the remote_write endpoint
+//   - instance: instance label to attach to all metrics
+//   - job: job label to attach to all metrics
+//   - reg: Prometheus registry to collect metrics from
+//   - opts: optional client options
+func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (*Client, error) {
 	if endpoint == "" {
 		return nil, ErrMissingEndpoint{}
 	}
@@ -42,36 +66,40 @@ func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry) (*
 	if reg == nil {
 		return nil, ErrMissingRegistry{}
 	}
-	return &Client{
+
+	c := &Client{
 		endpoint: endpoint,
 		instance: instance,
 		job:      job,
 		registry: reg,
-	}, nil
-}
-
-func (c *Client) Endpoint() string {
-	if c == nil {
-		return ""
 	}
-	return c.endpoint
+	for _, opt := range opts {
+		err := opt(c)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	endpointURL, err := c.url()
+	if err != nil {
+		return nil, err
+	}
+	// Set an empty path to ensure that our own path is not overridden with the default path.
+	// Disable retries by setting MaxRetries to -1.
+	c.client, err = remote.NewAPI(endpointURL.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
+	if err != nil {
+		return nil, NewErrFailedToCreateRemoteAPI(err)
+	}
+
+	return c, nil
 }
 
+// Registry returns the Prometheus registry used by the client.
 func (c *Client) Registry() *prometheus.Registry {
 	if c == nil {
 		return nil
 	}
 	return c.registry
-}
-
-// Set credentials needed for basic auth, return error if not provided
-func (c *Client) SetBasicAuth(username, password string) error {
-	if username == "" || password == "" {
-		return ErrMissingAuthCredentials{}
-	}
-	c.username = username
-	c.password = password
-	return nil
 }
 
 // Collect metrics from registry and convert them to TimeSeries
@@ -152,7 +180,7 @@ func (c *Client) collect() (*writev2.Request, error) {
 
 // Return the url of the remote_write endpoint with optional basic auth credentials
 func (c *Client) url() (*url.URL, error) {
-	parsedURL, err := url.Parse(c.Endpoint())
+	parsedURL, err := url.Parse(c.endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -167,17 +195,6 @@ func (c *Client) url() (*url.URL, error) {
 // Collect metrics and send them to remote server in interval.
 // Does not block main thread execution
 func (c *Client) Run(interval time.Duration, quit chan bool) error {
-	endpoint, err := c.url()
-	if err != nil {
-		return err
-	}
-	// Set an empty path to ensure that our own path is not overridden with the default path.
-	// Disable retries by setting MaxRetries to -1.
-	rwAPI, err := remote.NewAPI(endpoint.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
-	if err != nil {
-		return NewErrFailedToCreateRemoteAPI(err)
-	}
-
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -188,7 +205,7 @@ func (c *Client) Run(interval time.Duration, quit chan bool) error {
 				slog.Error("Failed to collect metrics for remote_write", "err", err)
 			}
 
-			stats, err := rwAPI.Write(context.TODO(), remote.WriteV2MessageType, req)
+			stats, err := c.client.Write(context.TODO(), remote.WriteV2MessageType, req)
 			if err != nil {
 				slog.Error("Failed to send metrics to remote endpoint", "err", err)
 			} else {
