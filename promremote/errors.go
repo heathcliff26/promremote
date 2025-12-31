@@ -2,7 +2,6 @@ package promremote
 
 import (
 	"fmt"
-	"io"
 )
 
 type ErrMissingEndpoint struct{}
@@ -29,29 +28,6 @@ func (e ErrMissingRegistry) Error() string {
 	return "No prometheus registry provided"
 }
 
-type ErrRemoteWriteFailed struct {
-	StatusCode int
-	Body       string
-}
-
-func NewErrRemoteWriteFailed(status int, resBody io.ReadCloser) error {
-	var body string
-	b, err := io.ReadAll(resBody)
-	if err != nil {
-		body = err.Error()
-	} else {
-		body = string(b)
-	}
-	return &ErrRemoteWriteFailed{
-		StatusCode: status,
-		Body:       body,
-	}
-}
-
-func (e *ErrRemoteWriteFailed) Error() string {
-	return fmt.Sprintf("Prometheus remote_write returned with Status Code %d, expected 200. Response body: %s", e.StatusCode, e.Body)
-}
-
 type ErrMissingAuthCredentials struct{}
 
 func (e ErrMissingAuthCredentials) Error() string {
@@ -64,4 +40,16 @@ type ErrInvalidMetricDesc struct {
 
 func (e *ErrInvalidMetricDesc) Error() string {
 	return "Received metric with invalid description: " + e.Desc
+}
+
+type ErrFailedToCreateRemoteAPI struct {
+	err error
+}
+
+func NewErrFailedToCreateRemoteAPI(err error) error {
+	return &ErrFailedToCreateRemoteAPI{err: err}
+}
+
+func (e *ErrFailedToCreateRemoteAPI) Error() string {
+	return fmt.Sprintf("Failed to create remote write API: %v", e.err)
 }

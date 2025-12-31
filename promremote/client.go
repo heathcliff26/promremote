@@ -1,19 +1,23 @@
 package promremote
 
 import (
-	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"time"
 
-	"github.com/klauspost/compress/snappy"
+	"github.com/prometheus/client_golang/exp/api/remote"
+	writev2 "github.com/prometheus/client_golang/exp/api/remote/genproto/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/prometheus/prometheus/model/timestamp"
-	"github.com/prometheus/prometheus/prompb"
+)
+
+var (
+	fqNameRegex = regexp.MustCompile("fqName: \"([a-zA-Z_:][a-zA-Z0-9_:]*)\"")
+	helpRegex   = regexp.MustCompile("help: \"([^\"]*)\"")
 )
 
 type Client struct {
@@ -23,12 +27,6 @@ type Client struct {
 	username string
 	password string
 	registry *prometheus.Registry
-}
-
-type MetricData struct {
-	Labels    map[string]string
-	Timestamp time.Time
-	Value     float64
 }
 
 func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry) (*Client, error) {
@@ -76,56 +74,27 @@ func (c *Client) SetBasicAuth(username, password string) error {
 	return nil
 }
 
-// Send TimeSeries to remote_write endpoint
-func (c *Client) post(ts []prompb.TimeSeries) error {
-	wr := prompb.WriteRequest{Timeseries: ts}
-	data, err := wr.Marshal()
-	if err != nil {
-		return err
-	}
-	body := snappy.Encode(nil, data)
-
-	req, err := http.NewRequest(http.MethodPost, c.Endpoint(), bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Add("Content-Encoding", "snappy")
-	req.Header.Add("Content-Type", "application/x-protobuf")
-	req.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
-	if c.username != "" {
-		req.SetBasicAuth(c.username, c.password)
-	}
-
-	httpClient := http.Client{
-		Timeout: time.Duration(10 * time.Second),
-	}
-	res, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return NewErrRemoteWriteFailed(res.StatusCode, req.Body)
-	}
-
-	return nil
-}
-
 // Collect metrics from registry and convert them to TimeSeries
-func (c *Client) collect() ([]prompb.TimeSeries, error) {
+func (c *Client) collect() (*writev2.Request, error) {
 	ch := make(chan prometheus.Metric)
 	go func() {
 		c.registry.Collect(ch)
 		close(ch)
 	}()
 
-	var res []prompb.TimeSeries
+	res := &writev2.Request{}
+	s := writev2.NewSymbolTable()
+
 	for metric := range ch {
 		// Extract name of metric
-		regex := regexp.MustCompile("fqName: \"([a-zA-Z_:][a-zA-Z0-9_:]*)\"")
-		fqName := regex.FindStringSubmatch(metric.Desc().String())
+		fqName := fqNameRegex.FindStringSubmatch(metric.Desc().String())
 		if len(fqName) < 2 {
 			return nil, &ErrInvalidMetricDesc{Desc: metric.Desc().String()}
+		}
+		helpRef := helpRegex.FindStringSubmatch(metric.Desc().String())
+		help := ""
+		if len(helpRef) == 2 {
+			help = helpRef[1]
 		}
 
 		// Convert metric to readable format
@@ -136,73 +105,94 @@ func (c *Client) collect() ([]prompb.TimeSeries, error) {
 		}
 
 		// Extract labels
-		labels := make([]prompb.Label, 0, len(m.Label)+3)
-		labels = append(labels, prompb.Label{
-			Name:  "__name__",
-			Value: fqName[1],
-		})
-		labels = append(labels, prompb.Label{
-			Name:  "instance",
-			Value: c.instance,
-		})
-		labels = append(labels, prompb.Label{
-			Name:  "job",
-			Value: c.job,
-		})
+		labels := make([]string, 0, 2*(len(m.Label)+3))
+		labels = append(labels, "__name__", fqName[1], "instance", c.instance, "job", c.job)
 		dropLabels := []string{"__name__", "instance", "job"}
 		for _, l := range m.Label {
 			if !slices.Contains(dropLabels, l.GetName()) {
-				labels = append(labels, prompb.Label{
-					Name:  l.GetName(),
-					Value: l.GetValue(),
-				})
+				labels = append(labels, l.GetName(), l.GetValue())
 			}
 		}
 
-		ts := prompb.TimeSeries{
-			Labels: labels,
-		}
-
 		// Extract value and timestamp
+		var metricType writev2.Metadata_MetricType
 		var value float64
 		if m.Counter != nil {
+			metricType = writev2.Metadata_METRIC_TYPE_COUNTER
 			value = m.Counter.GetValue()
 		} else if m.Gauge != nil {
+			metricType = writev2.Metadata_METRIC_TYPE_GAUGE
 			value = m.Gauge.GetValue()
 		} else if m.Untyped != nil {
+			metricType = writev2.Metadata_METRIC_TYPE_UNSPECIFIED
 			value = m.Untyped.GetValue()
 		} else {
 			return nil, fmt.Errorf("unknown metric type")
 		}
-		ts.Samples = []prompb.Sample{
-			{
-				Value:     value,
-				Timestamp: timestamp.FromTime(time.Now()),
+
+		ts := &writev2.TimeSeries{
+			Metadata: &writev2.Metadata{
+				Type:    metricType,
+				HelpRef: s.Symbolize(help),
+			},
+			LabelsRefs: s.SymbolizeLabels(labels, nil),
+			Samples: []*writev2.Sample{
+				{
+					Value:     value,
+					Timestamp: time.Now().UnixMilli(),
+				},
 			},
 		}
 
-		res = append(res, ts)
+		res.Timeseries = append(res.Timeseries, ts)
 	}
+	res.Symbols = s.Symbols()
 	return res, nil
+}
+
+// Return the url of the remote_write endpoint with optional basic auth credentials
+func (c *Client) url() (*url.URL, error) {
+	parsedURL, err := url.Parse(c.Endpoint())
+	if err != nil {
+		return nil, err
+	}
+
+	if c.username != "" {
+		parsedURL.User = url.UserPassword(c.username, c.password)
+	}
+
+	return parsedURL, nil
 }
 
 // Collect metrics and send them to remote server in interval.
 // Does not block main thread execution
-func (c *Client) Run(interval time.Duration, quit chan bool) {
+func (c *Client) Run(interval time.Duration, quit chan bool) error {
+	endpoint, err := c.url()
+	if err != nil {
+		return err
+	}
+	// Set an empty path to ensure that our own path is not overridden with the default path.
+	// Disable retries by setting MaxRetries to -1.
+	rwAPI, err := remote.NewAPI(endpoint.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
+	if err != nil {
+		return NewErrFailedToCreateRemoteAPI(err)
+	}
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		slog.Debug("Starting remote_write client")
 		for {
-			ts, err := c.collect()
+			req, err := c.collect()
 			if err != nil {
 				slog.Error("Failed to collect metrics for remote_write", "err", err)
 			}
-			err = c.post(ts)
+
+			stats, err := rwAPI.Write(context.TODO(), remote.WriteV2MessageType, req)
 			if err != nil {
 				slog.Error("Failed to send metrics to remote endpoint", "err", err)
 			} else {
-				slog.Debug("Successfully sent metrics via remote_write")
+				slog.Debug("Successfully sent metrics via remote_write", slog.Int("count", stats.AllSamples()), slog.Bool("written", !stats.NoDataWritten()))
 			}
 			select {
 			case <-ticker.C:
@@ -213,4 +203,6 @@ func (c *Client) Run(interval time.Duration, quit chan bool) {
 			}
 		}
 	}()
+
+	return nil
 }
