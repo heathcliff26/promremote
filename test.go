@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/heathcliff26/promremote/promremote"
@@ -37,6 +40,27 @@ func main() {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(buildInfoCollector)
 
+	server := &http.Server{
+		Addr:         ":8080",
+		Handler:      promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	go func() {
+		err = server.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("Failed to start http server", "err", err)
+			os.Exit(1)
+		}
+	}()
+	defer func() {
+		err = server.Shutdown(context.Background())
+		if err != nil {
+			slog.Error("Failed to shutdown http server", "err", err)
+		}
+	}()
+
 	rw, err := promremote.NewWriteClient(cfg.URL, "promremote-test", "promremote-test", reg)
 	if err != nil {
 		panic(err)
@@ -51,15 +75,14 @@ func main() {
 	rwQuit := make(chan bool)
 	rw.Run(30*time.Second, rwQuit)
 	defer func() {
-		rwQuit <- true
 		close(rwQuit)
+		slog.Info("Executed shutdown")
 	}()
 
-	handler := promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg})
-	// #nosec G114: This is just a test
-	err = http.ListenAndServe(":8080", handler)
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("Failed to run server", "error", err)
-		os.Exit(1)
-	}
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	<-quit
+
+	slog.Info("Received stop signal, shutting down")
 }
