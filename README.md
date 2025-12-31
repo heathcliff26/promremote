@@ -25,7 +25,6 @@ slog.Info("Starting remote_write client")
 rwQuit := make(chan bool)
 rwClient.Run(interval, rwQuit)
 defer func() {
-    rwQuit <- true
     close(rwQuit)
 }()
 ```

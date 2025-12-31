@@ -167,6 +167,8 @@ func TestCollect(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
+	assert := assert.New(t)
+
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewBuildInfoCollector())
 
@@ -174,9 +176,6 @@ func TestRun(t *testing.T) {
 
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
-	t.Cleanup(func() {
-		log.SetOutput(os.Stderr)
-	})
 
 	quit := make(chan bool)
 	c.Run(time.Second, quit)
@@ -184,6 +183,10 @@ func TestRun(t *testing.T) {
 	<-time.After(time.Second * 2)
 	quit <- true
 
+	log.SetOutput(os.Stderr)
+
 	output := buf.String()
-	assert.Contains(t, output, "ERROR Failed to send metrics to remote endpoint err=", "Should output error to log and not fail")
+	t.Log(output)
+	assert.Contains(output, "ERROR Failed to send metrics to remote endpoint err=", "Should output error to log and not fail")
+	assert.Contains(output, "INFO Received stop signal, shutting down remote_write client", "Should shutdown cleanly")
 }
