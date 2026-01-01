@@ -71,15 +71,11 @@ func main() {
 		panic(err)
 	}
 
-	rwQuit := make(chan bool)
-	err = rw.Run(30*time.Second, rwQuit)
+	err = rw.Run(30 * time.Second)
 	if err != nil {
 		panic(err)
 	}
-	defer func() {
-		close(rwQuit)
-		slog.Info("Executed shutdown")
-	}()
+	defer rw.Stop()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
