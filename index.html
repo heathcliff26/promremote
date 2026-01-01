@@ -55,9 +55,9 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (86.8%)</option>
+				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (87.9%)</option>
 				
-				<option value="file1">github.com/heathcliff26/promremote/promremote/errors.go (62.5%)</option>
+				<option value="file1">github.com/heathcliff26/promremote/promremote/errors.go (66.7%)</option>
 				
 				</select>
 			</div>
@@ -89,6 +89,7 @@ import (
         "net/url"
         "regexp"
         "slices"
+        "sync/atomic"
         "time"
 
         "github.com/prometheus/client_golang/exp/api/remote"
@@ -107,7 +108,11 @@ type Client interface {
         Registry() *prometheus.Registry
         // Run periodically collects metrics and sends them to the remote server.
         // It runs as a background goroutine and does not block the calling thread.
-        Run(interval time.Duration, quit chan bool) error
+        Run(interval time.Duration) error
+        // IsRunning returns true if the client is currently running.
+        IsRunning() bool
+        // Stop stops the remote_write client.
+        Stop()
 }
 
 type client struct {
@@ -118,15 +123,17 @@ type client struct {
         password string
         registry *prometheus.Registry
 
-        client *remote.API
+        client  *remote.API
+        running atomic.Bool
+        cancel  context.CancelFunc
 }
 
 type ClientOption func(*client) error
 
 // WithBasicAuth configures basic authentication when sending metrics.
 // Returns an error if username or password are empty.
-func WithBasicAuth(username, password string) ClientOption <span class="cov6" title="4">{
-        return func(c *client) error </span><span class="cov6" title="4">{
+func WithBasicAuth(username, password string) ClientOption <span class="cov5" title="4">{
+        return func(c *client) error </span><span class="cov5" title="4">{
                 if username == "" || password == "" </span><span class="cov4" title="3">{
                         return ErrMissingAuthCredentials{}
                 }</span>
@@ -143,45 +150,45 @@ func WithBasicAuth(username, password string) ClientOption <span class="cov6" ti
 //   - job: job label to attach to all metrics
 //   - reg: Prometheus registry to collect metrics from
 //   - opts: optional client options
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) <span class="cov10" title="12">{
+func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) <span class="cov9" title="13">{
         if endpoint == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingEndpoint{}
         }</span>
-        <span class="cov9" title="11">if instance == "" </span><span class="cov1" title="1">{
+        <span class="cov9" title="12">if instance == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingInstance{}
         }</span>
-        <span class="cov9" title="10">if job == "" </span><span class="cov1" title="1">{
+        <span class="cov8" title="11">if job == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingJob{}
         }</span>
-        <span class="cov8" title="9">if reg == nil </span><span class="cov1" title="1">{
+        <span class="cov8" title="10">if reg == nil </span><span class="cov1" title="1">{
                 return nil, ErrMissingRegistry{}
         }</span>
 
-        <span class="cov8" title="8">c := &amp;client{
+        <span class="cov8" title="9">c := &amp;client{
                 endpoint: endpoint,
                 instance: instance,
                 job:      job,
                 registry: reg,
         }
-        for _, opt := range opts </span><span class="cov6" title="4">{
+        for _, opt := range opts </span><span class="cov5" title="4">{
                 err := opt(c)
                 if err != nil </span><span class="cov4" title="3">{
                         return nil, err
                 }</span>
         }
 
-        <span class="cov6" title="5">endpointURL, err := c.url()
+        <span class="cov6" title="6">endpointURL, err := c.url()
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
         // Set an empty path to ensure that our own path is not overridden with the default path.
         // Disable retries by setting MaxRetries to -1.
-        <span class="cov6" title="5">c.client, err = remote.NewAPI(endpointURL.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
+        <span class="cov6" title="6">c.client, err = remote.NewAPI(endpointURL.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
         if err != nil </span><span class="cov0" title="0">{
                 return nil, NewErrFailedToCreateRemoteAPI(err)
         }</span>
 
-        <span class="cov6" title="5">return c, nil</span>
+        <span class="cov6" title="6">return c, nil</span>
 }
 
 // Implement interface method
@@ -193,52 +200,52 @@ func (c *client) Registry() *prometheus.Registry <span class="cov4" title="3">{
 }
 
 // Collect metrics from registry and convert them to TimeSeries
-func (c *client) collect() (*writev2.Request, error) <span class="cov6" title="4">{
+func (c *client) collect() (*writev2.Request, error) <span class="cov6" title="5">{
         ch := make(chan prometheus.Metric)
-        go func() </span><span class="cov6" title="4">{
+        go func() </span><span class="cov6" title="5">{
                 c.registry.Collect(ch)
                 close(ch)
         }</span>()
 
-        <span class="cov6" title="4">res := &amp;writev2.Request{}
+        <span class="cov6" title="5">res := &amp;writev2.Request{}
         s := writev2.NewSymbolTable()
 
-        for metric := range ch </span><span class="cov6" title="4">{
+        for metric := range ch </span><span class="cov6" title="5">{
                 // Extract name of metric
                 fqName := fqNameRegex.FindStringSubmatch(metric.Desc().String())
                 if len(fqName) &lt; 2 </span><span class="cov0" title="0">{
                         return nil, &amp;ErrInvalidMetricDesc{Desc: metric.Desc().String()}
                 }</span>
-                <span class="cov6" title="4">helpRef := helpRegex.FindStringSubmatch(metric.Desc().String())
+                <span class="cov6" title="5">helpRef := helpRegex.FindStringSubmatch(metric.Desc().String())
                 help := ""
-                if len(helpRef) == 2 </span><span class="cov6" title="4">{
+                if len(helpRef) == 2 </span><span class="cov6" title="5">{
                         help = helpRef[1]
                 }</span>
 
                 // Convert metric to readable format
-                <span class="cov6" title="4">m := &amp;dto.Metric{}
+                <span class="cov6" title="5">m := &amp;dto.Metric{}
                 err := metric.Write(m)
                 if err != nil </span><span class="cov0" title="0">{
                         return nil, err
                 }</span>
 
                 // Extract labels
-                <span class="cov6" title="4">labels := make([]string, 0, 2*(len(m.Label)+3))
+                <span class="cov6" title="5">labels := make([]string, 0, 2*(len(m.Label)+3))
                 labels = append(labels, "__name__", fqName[1], "instance", c.instance, "job", c.job)
                 dropLabels := []string{"__name__", "instance", "job"}
-                for _, l := range m.Label </span><span class="cov10" title="12">{
-                        if !slices.Contains(dropLabels, l.GetName()) </span><span class="cov10" title="12">{
+                for _, l := range m.Label </span><span class="cov10" title="15">{
+                        if !slices.Contains(dropLabels, l.GetName()) </span><span class="cov10" title="15">{
                                 labels = append(labels, l.GetName(), l.GetValue())
                         }</span>
                 }
 
                 // Extract value and timestamp
-                <span class="cov6" title="4">var metricType writev2.Metadata_MetricType
+                <span class="cov6" title="5">var metricType writev2.Metadata_MetricType
                 var value float64
                 if m.Counter != nil </span><span class="cov0" title="0">{
                         metricType = writev2.Metadata_METRIC_TYPE_COUNTER
                         value = m.Counter.GetValue()
-                }</span> else<span class="cov6" title="4"> if m.Gauge != nil </span><span class="cov6" title="4">{
+                }</span> else<span class="cov6" title="5"> if m.Gauge != nil </span><span class="cov6" title="5">{
                         metricType = writev2.Metadata_METRIC_TYPE_GAUGE
                         value = m.Gauge.GetValue()
                 }</span> else<span class="cov0" title="0"> if m.Untyped != nil </span><span class="cov0" title="0">{
@@ -248,7 +255,7 @@ func (c *client) collect() (*writev2.Request, error) <span class="cov6" title="4
                         return nil, fmt.Errorf("unknown metric type")
                 }</span>
 
-                <span class="cov6" title="4">ts := &amp;writev2.TimeSeries{
+                <span class="cov6" title="5">ts := &amp;writev2.TimeSeries{
                         Metadata: &amp;writev2.Metadata{
                                 Type:    metricType,
                                 HelpRef: s.Symbolize(help),
@@ -264,53 +271,73 @@ func (c *client) collect() (*writev2.Request, error) <span class="cov6" title="4
 
                 res.Timeseries = append(res.Timeseries, ts)</span>
         }
-        <span class="cov6" title="4">res.Symbols = s.Symbols()
+        <span class="cov6" title="5">res.Symbols = s.Symbols()
         return res, nil</span>
 }
 
 // Return the url of the remote_write endpoint with optional basic auth credentials
-func (c *client) url() (*url.URL, error) <span class="cov8" title="8">{
+func (c *client) url() (*url.URL, error) <span class="cov8" title="9">{
         parsedURL, err := url.Parse(c.endpoint)
         if err != nil </span><span class="cov1" title="1">{
                 return nil, err
         }</span>
 
-        <span class="cov8" title="7">if c.username != "" </span><span class="cov3" title="2">{
+        <span class="cov7" title="8">if c.username != "" </span><span class="cov3" title="2">{
                 parsedURL.User = url.UserPassword(c.username, c.password)
         }</span>
 
-        <span class="cov8" title="7">return parsedURL, nil</span>
+        <span class="cov7" title="8">return parsedURL, nil</span>
 }
 
 // Implement interface method
-func (c *client) Run(interval time.Duration, quit chan bool) error <span class="cov1" title="1">{
-        go func() </span><span class="cov1" title="1">{
+func (c *client) Run(interval time.Duration) error <span class="cov4" title="3">{
+        if !c.running.CompareAndSwap(false, true) </span><span class="cov1" title="1">{
+                return ErrClientAlreadyRunning{}
+        }</span>
+
+        <span class="cov3" title="2">ctx, cancel := context.WithCancel(context.Background())
+        c.cancel = cancel
+
+        go func() </span><span class="cov3" title="2">{
                 ticker := time.NewTicker(interval)
                 defer ticker.Stop()
+                defer c.running.Store(false)
                 slog.Debug("Starting remote_write client")
-                for </span><span class="cov4" title="3">{
+                for </span><span class="cov5" title="4">{
                         req, err := c.collect()
                         if err != nil </span><span class="cov0" title="0">{
                                 slog.Error("Failed to collect metrics for remote_write", "err", err)
                         }</span>
 
-                        <span class="cov4" title="3">stats, err := c.client.Write(context.TODO(), remote.WriteV2MessageType, req)
-                        if err != nil </span><span class="cov4" title="3">{
+                        <span class="cov5" title="4">stats, err := c.client.Write(ctx, remote.WriteV2MessageType, req)
+                        if err != nil </span><span class="cov5" title="4">{
                                 slog.Error("Failed to send metrics to remote endpoint", "err", err)
                         }</span> else<span class="cov0" title="0"> {
                                 slog.Debug("Successfully sent metrics via remote_write", slog.Int("count", stats.AllSamples()), slog.Bool("written", !stats.NoDataWritten()))
                         }</span>
-                        <span class="cov4" title="3">select </span>{
+                        <span class="cov5" title="4">select </span>{
                         case &lt;-ticker.C:<span class="cov3" title="2"></span>
 
-                        case &lt;-quit:<span class="cov1" title="1">
-                                slog.Info("Received stop signal, shutting down remote_write client")
+                        case &lt;-ctx.Done():<span class="cov3" title="2">
+                                slog.Info("Stopping remote_write client")
                                 return</span>
                         }
                 }
         }()
 
-        <span class="cov1" title="1">return nil</span>
+        <span class="cov3" title="2">return nil</span>
+}
+
+// Implement interface method
+func (c *client) IsRunning() bool <span class="cov7" title="8">{
+        return c.running.Load()
+}</span>
+
+// Implement interface method
+func (c *client) Stop() <span class="cov5" title="4">{
+        if c.IsRunning() &amp;&amp; c.cancel != nil </span><span class="cov3" title="2">{
+                c.cancel()
+        }</span>
 }
 </pre>
 		
@@ -322,25 +349,25 @@ import (
 
 type ErrMissingEndpoint struct{}
 
-func (e ErrMissingEndpoint) Error() string <span class="cov1" title="1">{
+func (e ErrMissingEndpoint) Error() string <span class="cov6" title="2">{
         return "No endpoint for prometheus remote_write provided"
 }</span>
 
 type ErrMissingInstance struct{}
 
-func (e ErrMissingInstance) Error() string <span class="cov1" title="1">{
+func (e ErrMissingInstance) Error() string <span class="cov6" title="2">{
         return "No instance name provided"
 }</span>
 
 type ErrMissingJob struct{}
 
-func (e ErrMissingJob) Error() string <span class="cov1" title="1">{
+func (e ErrMissingJob) Error() string <span class="cov6" title="2">{
         return "No job name provided"
 }</span>
 
 type ErrMissingRegistry struct{}
 
-func (e ErrMissingRegistry) Error() string <span class="cov1" title="1">{
+func (e ErrMissingRegistry) Error() string <span class="cov6" title="2">{
         return "No prometheus registry provided"
 }</span>
 
@@ -368,6 +395,12 @@ func NewErrFailedToCreateRemoteAPI(err error) error <span class="cov0" title="0"
 
 func (e *ErrFailedToCreateRemoteAPI) Error() string <span class="cov0" title="0">{
         return fmt.Sprintf("Failed to create remote write API: %v", e.err)
+}</span>
+
+type ErrClientAlreadyRunning struct{}
+
+func (e ErrClientAlreadyRunning) Error() string <span class="cov6" title="2">{
+        return "Only a single instance of the client can run at a time"
 }</span>
 </pre>
 		
