@@ -48,7 +48,7 @@ func TestNewWriteClient(t *testing.T) {
 
 func TestClientRegistry(t *testing.T) {
 	c, _ := NewWriteClient("test-endpoint", "test", "test", prometheus.NewRegistry())
-	var cNil *Client = nil
+	var cNil *client = nil
 
 	assert := assert.New(t)
 
@@ -83,8 +83,9 @@ func TestClientWithBasicAuth(t *testing.T) {
 		} else {
 			require.NotNil(c, "Should return a client")
 			require.NoError(err, "Should not return an error")
-			assert.Equal(tCase.Username, c.username, "Username should be set")
-			assert.Equal(tCase.Password, c.password, "Password should be set")
+			client := c.(*client)
+			assert.Equal(tCase.Username, client.username, "Username should be set")
+			assert.Equal(tCase.Password, client.password, "Password should be set")
 		}
 	}
 }
@@ -98,7 +99,7 @@ func TestCollect(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	req, err := c.collect()
+	req, err := c.(*client).collect()
 
 	require.NoError(err, "Should collect metrics without error")
 	require.NotEmpty(req, "Should return a remote write request")
@@ -115,7 +116,7 @@ func TestUrl(t *testing.T) {
 	t.Run("BasicURL", func(t *testing.T) {
 		assert := assert.New(t)
 
-		c := &Client{
+		c := &client{
 			endpoint: "http://prometheus.example.com:1234/test/write",
 		}
 		url, err := c.url()
@@ -126,7 +127,7 @@ func TestUrl(t *testing.T) {
 	t.Run("WithBasicAuth", func(t *testing.T) {
 		assert := assert.New(t)
 
-		c := &Client{
+		c := &client{
 			endpoint: "http://prometheus.example.com:1234/test/write",
 			username: "testuser",
 			password: "testpassword",
@@ -139,7 +140,7 @@ func TestUrl(t *testing.T) {
 	t.Run("ParseError", func(t *testing.T) {
 		assert := assert.New(t)
 
-		c := &Client{
+		c := &client{
 			endpoint: "%",
 		}
 		url, err := c.url()
