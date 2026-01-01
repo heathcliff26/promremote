@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
+	"net/http"
 	"regexp"
 	"slices"
 	"sync/atomic"
@@ -21,6 +21,8 @@ var (
 	helpRegex   = regexp.MustCompile("help: \"([^\"]*)\"")
 )
 
+const httpClientTimeout = 10 * time.Second
+
 type Client interface {
 	// Registry returns the Prometheus registry used by the client.
 	Registry() *prometheus.Registry
@@ -34,16 +36,14 @@ type Client interface {
 }
 
 type client struct {
-	endpoint string
 	instance string
 	job      string
-	username string
-	password string
+	client   *http.Client
 	registry *prometheus.Registry
 
-	client  *remote.API
-	running atomic.Bool
-	cancel  context.CancelFunc
+	remoteAPI *remote.API
+	running   atomic.Bool
+	cancel    context.CancelFunc
 }
 
 type ClientOption func(*client) error
@@ -55,8 +55,7 @@ func WithBasicAuth(username, password string) ClientOption {
 		if username == "" || password == "" {
 			return ErrMissingAuthCredentials{}
 		}
-		c.username = username
-		c.password = password
+		addBasicAuthToHTTPClient(c.client, username, password)
 		return nil
 	}
 }
@@ -83,25 +82,22 @@ func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, op
 	}
 
 	c := &client{
-		endpoint: endpoint,
 		instance: instance,
 		job:      job,
+		client:   newHTTPClientWithTimeout(),
 		registry: reg,
 	}
+	var err error
 	for _, opt := range opts {
-		err := opt(c)
+		err = opt(c)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	endpointURL, err := c.url()
-	if err != nil {
-		return nil, err
-	}
 	// Set an empty path to ensure that our own path is not overridden with the default path.
 	// Disable retries by setting MaxRetries to -1.
-	c.client, err = remote.NewAPI(endpointURL.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
+	c.remoteAPI, err = remote.NewAPI(endpoint, remote.WithAPIPath(""), remote.WithAPIHTTPClient(c.client), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
 	if err != nil {
 		return nil, NewErrFailedToCreateRemoteAPI(err)
 	}
@@ -193,20 +189,6 @@ func (c *client) collect() (*writev2.Request, error) {
 	return res, nil
 }
 
-// Return the url of the remote_write endpoint with optional basic auth credentials
-func (c *client) url() (*url.URL, error) {
-	parsedURL, err := url.Parse(c.endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	if c.username != "" {
-		parsedURL.User = url.UserPassword(c.username, c.password)
-	}
-
-	return parsedURL, nil
-}
-
 // Implement interface method
 func (c *client) Run(interval time.Duration) error {
 	if !c.running.CompareAndSwap(false, true) {
@@ -227,7 +209,7 @@ func (c *client) Run(interval time.Duration) error {
 				slog.Error("Failed to collect metrics for remote_write", "err", err)
 			}
 
-			stats, err := c.client.Write(ctx, remote.WriteV2MessageType, req)
+			stats, err := c.remoteAPI.Write(ctx, remote.WriteV2MessageType, req)
 			if err != nil {
 				slog.Error("Failed to send metrics to remote endpoint", "err", err)
 			} else {

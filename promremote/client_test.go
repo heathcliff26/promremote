@@ -2,7 +2,10 @@ package promremote
 
 import (
 	"bytes"
+	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -23,6 +26,7 @@ func TestNewWriteClient(t *testing.T) {
 		{"MissingInstance", "test-endpoint", "", "testjob", prometheus.NewRegistry(), ErrMissingInstance{}.Error()},
 		{"MissingJob", "test-endpoint", "testinstance", "", prometheus.NewRegistry(), ErrMissingJob{}.Error()},
 		{"MissingRegistry", "test-endpoint", "testinstance", "testjob", nil, ErrMissingRegistry{}.Error()},
+		{"CreateRemoteAPIError", "http://%", "testinstance", "testjob", prometheus.NewRegistry(), NewErrFailedToCreateRemoteAPI(fmt.Errorf("")).Error()},
 	}
 
 	for _, tCase := range tMatrix {
@@ -40,9 +44,14 @@ func TestNewWriteClient(t *testing.T) {
 		c, err := NewWriteClient("test-endpoint", "testinstance", "testjob", prometheus.NewRegistry())
 
 		assert := assert.New(t)
+		require := require.New(t)
 
 		assert.NoError(err, "should not return an error")
 		assert.NotEmpty(c, "Should return a client")
+		httpClient := c.(*client).client
+		require.NotNil(httpClient, "Should have http client")
+		assert.Equal(httpClientTimeout, httpClient.Timeout, "Should have timeout set")
+		assert.Nil(httpClient.Transport, "Should not have a transport")
 	})
 }
 
@@ -83,9 +92,9 @@ func TestClientWithBasicAuth(t *testing.T) {
 		} else {
 			require.NotNil(c, "Should return a client")
 			require.NoError(err, "Should not return an error")
-			client := c.(*client)
-			assert.Equal(tCase.Username, client.username, "Username should be set")
-			assert.Equal(tCase.Password, client.password, "Password should be set")
+			httpClient := c.(*client).client
+			require.IsType(&basicAuthRoundTripper{}, httpClient.Transport, "HTTP client should have basic auth transport")
+			assert.Equal(httpClientTimeout, httpClient.Timeout, "Should have timeout set")
 		}
 	}
 }
@@ -110,44 +119,6 @@ func TestCollect(t *testing.T) {
 	assert.NotEmpty(ts.Metadata, "TimeSeries should have metadata")
 	assert.NotEmpty(ts.LabelsRefs, "TimeSeries should have label references")
 	assert.NotEmpty(ts.Samples, "TimeSeries should have samples")
-}
-
-func TestUrl(t *testing.T) {
-	t.Run("BasicURL", func(t *testing.T) {
-		assert := assert.New(t)
-
-		c := &client{
-			endpoint: "http://prometheus.example.com:1234/test/write",
-		}
-		url, err := c.url()
-
-		assert.NoError(err, "Should not return an error")
-		assert.Equal(c.endpoint, url.String(), "Should return correct URL")
-	})
-	t.Run("WithBasicAuth", func(t *testing.T) {
-		assert := assert.New(t)
-
-		c := &client{
-			endpoint: "http://prometheus.example.com:1234/test/write",
-			username: "testuser",
-			password: "testpassword",
-		}
-		url, err := c.url()
-
-		assert.NoError(err, "Should not return an error")
-		assert.Equal("http://testuser:testpassword@prometheus.example.com:1234/test/write", url.String(), "Should return correct URL")
-	})
-	t.Run("ParseError", func(t *testing.T) {
-		assert := assert.New(t)
-
-		c := &client{
-			endpoint: "%",
-		}
-		url, err := c.url()
-
-		assert.Error(err, "Should return an error")
-		assert.Nil(url, "Should not return a URL")
-	})
 }
 
 func TestRun(t *testing.T) {
@@ -204,4 +175,73 @@ func TestStop(t *testing.T) {
 	assert.NotPanics(func() {
 		c.Stop()
 	}, "Stopping a stopped client should not panic")
+}
+
+func TestRemoteRequests(t *testing.T) {
+	t.Run("BasicAuth", func(t *testing.T) {
+		assert := assert.New(t)
+
+		reg := prometheus.NewRegistry()
+		reg.MustRegister(collectors.NewBuildInfoCollector())
+
+		called := make(chan struct{})
+
+		server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			assert.Equal("Basic dGVzdHVzZXI6dGVzdHBhc3N3b3Jk", req.Header.Get("Authorization"), "Should have correct basic auth header")
+			_, _ = rw.Write(nil)
+			close(called)
+		}))
+		t.Cleanup(server.Close)
+
+		c, _ := NewWriteClient(server.URL, "test", "test", reg, WithBasicAuth("testuser", "testpassword"))
+
+		assert.NoError(c.Run(time.Minute), "Should run client without error")
+
+		assert.Eventually(func() bool {
+			select {
+			case <-called:
+				return true
+			default:
+				return false
+			}
+		}, time.Millisecond*200, time.Millisecond*10, "Client should have called server")
+
+		c.Stop()
+		assert.Eventually(func() bool {
+			return !c.IsRunning()
+		}, time.Millisecond*200, time.Millisecond*10, "Client should stop running after Stop() called")
+	})
+	t.Run("WithoutAuth", func(t *testing.T) {
+		assert := assert.New(t)
+
+		reg := prometheus.NewRegistry()
+		reg.MustRegister(collectors.NewBuildInfoCollector())
+
+		called := make(chan struct{})
+
+		server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			assert.Empty(req.Header.Get("Authorization"), "Should not have basic auth header")
+			_, _ = rw.Write(nil)
+			close(called)
+		}))
+		t.Cleanup(server.Close)
+
+		c, _ := NewWriteClient(server.URL, "test", "test", reg)
+
+		assert.NoError(c.Run(time.Minute), "Should run client without error")
+
+		assert.Eventually(func() bool {
+			select {
+			case <-called:
+				return true
+			default:
+				return false
+			}
+		}, time.Millisecond*200, time.Millisecond*10, "Client should have called server")
+
+		c.Stop()
+		assert.Eventually(func() bool {
+			return !c.IsRunning()
+		}, time.Millisecond*200, time.Millisecond*10, "Client should stop running after Stop() called")
+	})
 }
