@@ -22,6 +22,7 @@ var (
 )
 
 const httpClientTimeout = 10 * time.Second
+const defaultJobName = "promremote"
 
 type Client interface {
 	// Registry returns the Prometheus registry used by the client.
@@ -60,30 +61,46 @@ func WithBasicAuth(username, password string) ClientOption {
 	}
 }
 
+// WithInstanceLabel sets the instance label for the metrics.
+// By default the hostname of the machine is used.
+func WithInstanceLabel(instance string) ClientOption {
+	return func(c *client) error {
+		if instance == "" {
+			return ErrMissingInstance{}
+		}
+		c.instance = instance
+		return nil
+	}
+}
+
+// WithJobLabel sets the job label for the metrics.
+// By default "promremote" is used.
+func WithJobLabel(job string) ClientOption {
+	return func(c *client) error {
+		if job == "" {
+			return ErrMissingJob{}
+		}
+		c.job = job
+		return nil
+	}
+}
+
 // NewWriteClient creates a new remote_write client.
 // Parameters:
 //   - endpoint: URL of the remote_write endpoint
-//   - instance: instance label to attach to all metrics
-//   - job: job label to attach to all metrics
 //   - reg: Prometheus registry to collect metrics from
 //   - opts: optional client options
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) {
+func NewWriteClient(endpoint string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) {
 	if endpoint == "" {
 		return nil, ErrMissingEndpoint{}
-	}
-	if instance == "" {
-		return nil, ErrMissingInstance{}
-	}
-	if job == "" {
-		return nil, ErrMissingJob{}
 	}
 	if reg == nil {
 		return nil, ErrMissingRegistry{}
 	}
 
 	c := &client{
-		instance: instance,
-		job:      job,
+		instance: getHostname(),
+		job:      defaultJobName,
 		client:   newHTTPClientWithTimeout(),
 		registry: reg,
 	}

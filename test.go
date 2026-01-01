@@ -61,12 +61,12 @@ func main() {
 		}
 	}()
 
-	var opts []promremote.ClientOption
+	opts := []promremote.ClientOption{promremote.WithInstanceLabel("promremote-test"), promremote.WithJobLabel("promremote-test")}
 	if cfg.Username != "" {
 		opts = append(opts, promremote.WithBasicAuth(cfg.Username, cfg.Password))
 	}
 
-	rw, err := promremote.NewWriteClient(cfg.URL, "promremote-test", "promremote-test", reg, opts...)
+	rw, err := promremote.NewWriteClient(cfg.URL, reg, opts...)
 	if err != nil {
 		panic(err)
 	}
