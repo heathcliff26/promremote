@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (86.4%)</option>
+				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (86.8%)</option>
 				
 				<option value="file1">github.com/heathcliff26/promremote/promremote/errors.go (62.5%)</option>
 				
@@ -109,51 +109,79 @@ type Client struct {
         username string
         password string
         registry *prometheus.Registry
+
+        client *remote.API
 }
 
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry) (*Client, error) <span class="cov8" title="9">{
+type ClientOption func(*Client) error
+
+// WithBasicAuth configures basic authentication when sending metrics.
+// Returns an error if username or password are empty.
+func WithBasicAuth(username, password string) ClientOption <span class="cov6" title="4">{
+        return func(c *Client) error </span><span class="cov6" title="4">{
+                if username == "" || password == "" </span><span class="cov4" title="3">{
+                        return ErrMissingAuthCredentials{}
+                }</span>
+                <span class="cov1" title="1">c.username = username
+                c.password = password
+                return nil</span>
+        }
+}
+
+// NewWriteClient creates a new remote_write client.
+// Parameters:
+//   - endpoint: URL of the remote_write endpoint
+//   - instance: instance label to attach to all metrics
+//   - job: job label to attach to all metrics
+//   - reg: Prometheus registry to collect metrics from
+//   - opts: optional client options
+func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (*Client, error) <span class="cov10" title="12">{
         if endpoint == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingEndpoint{}
         }</span>
-        <span class="cov8" title="8">if instance == "" </span><span class="cov1" title="1">{
+        <span class="cov9" title="11">if instance == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingInstance{}
         }</span>
-        <span class="cov8" title="7">if job == "" </span><span class="cov1" title="1">{
+        <span class="cov9" title="10">if job == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingJob{}
         }</span>
-        <span class="cov7" title="6">if reg == nil </span><span class="cov1" title="1">{
+        <span class="cov8" title="9">if reg == nil </span><span class="cov1" title="1">{
                 return nil, ErrMissingRegistry{}
         }</span>
-        <span class="cov6" title="5">return &amp;Client{
+
+        <span class="cov8" title="8">c := &amp;Client{
                 endpoint: endpoint,
                 instance: instance,
                 job:      job,
                 registry: reg,
-        }, nil</span>
-}
+        }
+        for _, opt := range opts </span><span class="cov6" title="4">{
+                err := opt(c)
+                if err != nil </span><span class="cov4" title="3">{
+                        return nil, err
+                }</span>
+        }
 
-func (c *Client) Endpoint() string <span class="cov8" title="7">{
-        if c == nil </span><span class="cov1" title="1">{
-                return ""
+        <span class="cov6" title="5">endpointURL, err := c.url()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
         }</span>
-        <span class="cov7" title="6">return c.endpoint</span>
+        // Set an empty path to ensure that our own path is not overridden with the default path.
+        // Disable retries by setting MaxRetries to -1.
+        <span class="cov6" title="5">c.client, err = remote.NewAPI(endpointURL.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, NewErrFailedToCreateRemoteAPI(err)
+        }</span>
+
+        <span class="cov6" title="5">return c, nil</span>
 }
 
+// Registry returns the Prometheus registry used by the client.
 func (c *Client) Registry() *prometheus.Registry <span class="cov4" title="3">{
         if c == nil </span><span class="cov3" title="2">{
                 return nil
         }</span>
         <span class="cov1" title="1">return c.registry</span>
-}
-
-// Set credentials needed for basic auth, return error if not provided
-func (c *Client) SetBasicAuth(username, password string) error <span class="cov6" title="4">{
-        if username == "" || password == "" </span><span class="cov4" title="3">{
-                return ErrMissingAuthCredentials{}
-        }</span>
-        <span class="cov1" title="1">c.username = username
-        c.password = password
-        return nil</span>
 }
 
 // Collect metrics from registry and convert them to TimeSeries
@@ -233,34 +261,23 @@ func (c *Client) collect() (*writev2.Request, error) <span class="cov6" title="4
 }
 
 // Return the url of the remote_write endpoint with optional basic auth credentials
-func (c *Client) url() (*url.URL, error) <span class="cov6" title="4">{
-        parsedURL, err := url.Parse(c.Endpoint())
+func (c *Client) url() (*url.URL, error) <span class="cov8" title="8">{
+        parsedURL, err := url.Parse(c.endpoint)
         if err != nil </span><span class="cov1" title="1">{
                 return nil, err
         }</span>
 
-        <span class="cov4" title="3">if c.username != "" </span><span class="cov1" title="1">{
+        <span class="cov8" title="7">if c.username != "" </span><span class="cov3" title="2">{
                 parsedURL.User = url.UserPassword(c.username, c.password)
         }</span>
 
-        <span class="cov4" title="3">return parsedURL, nil</span>
+        <span class="cov8" title="7">return parsedURL, nil</span>
 }
 
 // Collect metrics and send them to remote server in interval.
 // Does not block main thread execution
 func (c *Client) Run(interval time.Duration, quit chan bool) error <span class="cov1" title="1">{
-        endpoint, err := c.url()
-        if err != nil </span><span class="cov0" title="0">{
-                return err
-        }</span>
-        // Set an empty path to ensure that our own path is not overridden with the default path.
-        // Disable retries by setting MaxRetries to -1.
-        <span class="cov1" title="1">rwAPI, err := remote.NewAPI(endpoint.String(), remote.WithAPIPath(""), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
-        if err != nil </span><span class="cov0" title="0">{
-                return NewErrFailedToCreateRemoteAPI(err)
-        }</span>
-
-        <span class="cov1" title="1">go func() </span><span class="cov1" title="1">{
+        go func() </span><span class="cov1" title="1">{
                 ticker := time.NewTicker(interval)
                 defer ticker.Stop()
                 slog.Debug("Starting remote_write client")
@@ -270,7 +287,7 @@ func (c *Client) Run(interval time.Duration, quit chan bool) error <span class="
                                 slog.Error("Failed to collect metrics for remote_write", "err", err)
                         }</span>
 
-                        <span class="cov4" title="3">stats, err := rwAPI.Write(context.TODO(), remote.WriteV2MessageType, req)
+                        <span class="cov4" title="3">stats, err := c.client.Write(context.TODO(), remote.WriteV2MessageType, req)
                         if err != nil </span><span class="cov4" title="3">{
                                 slog.Error("Failed to send metrics to remote endpoint", "err", err)
                         }</span> else<span class="cov0" title="0"> {
