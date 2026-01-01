@@ -19,10 +19,10 @@ func TestNewWriteClient(t *testing.T) {
 		Registry                      *prometheus.Registry
 		Error                         string
 	}{
-		{"MissingEndpoint", "", "testinstance", "testjob", prometheus.NewRegistry(), "No endpoint for prometheus remote_write provided"},
-		{"MissingInstance", "test-endpoint", "", "testjob", prometheus.NewRegistry(), "No instance name provided"},
-		{"MissingJob", "test-endpoint", "testinstance", "", prometheus.NewRegistry(), "No job name provided"},
-		{"MissingRegistry", "test-endpoint", "testinstance", "testjob", nil, "No prometheus registry provided"},
+		{"MissingEndpoint", "", "testinstance", "testjob", prometheus.NewRegistry(), ErrMissingEndpoint{}.Error()},
+		{"MissingInstance", "test-endpoint", "", "testjob", prometheus.NewRegistry(), ErrMissingInstance{}.Error()},
+		{"MissingJob", "test-endpoint", "testinstance", "", prometheus.NewRegistry(), ErrMissingJob{}.Error()},
+		{"MissingRegistry", "test-endpoint", "testinstance", "testjob", nil, ErrMissingRegistry{}.Error()},
 	}
 
 	for _, tCase := range tMatrix {
@@ -160,18 +160,48 @@ func TestRun(t *testing.T) {
 
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+	})
 
-	quit := make(chan bool)
-	err := c.Run(time.Second, quit)
+	err := c.Run(time.Second)
 	assert.NoError(err, "Should not return an error")
+	assert.ErrorContains(c.Run(time.Second), ErrClientAlreadyRunning{}.Error(), "Successive Run() calls should return an error")
 
 	<-time.After(time.Second * 2)
-	quit <- true
+	c.Stop()
 
-	log.SetOutput(os.Stderr)
+	assert.Eventually(func() bool {
+		return !c.IsRunning()
+	}, time.Millisecond*200, time.Millisecond*10, "Client should stop running after Stop() called")
 
 	output := buf.String()
-	t.Log(output)
+	t.Log("Log output:\n", output)
 	assert.Contains(output, "ERROR Failed to send metrics to remote endpoint err=", "Should output error to log and not fail")
-	assert.Contains(output, "INFO Received stop signal, shutting down remote_write client", "Should shutdown cleanly")
+}
+
+func TestStop(t *testing.T) {
+	assert := assert.New(t)
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewBuildInfoCollector())
+
+	c, _ := NewWriteClient("testendpoint", "test", "test", reg)
+
+	// Stopping before running should be a no-op
+	assert.NotPanics(func() {
+		c.Stop()
+	}, "Stopping a non-running client should not panic")
+
+	assert.NoError(c.Run(time.Second), "Should start the client")
+
+	c.Stop()
+	assert.Eventually(func() bool {
+		return !c.IsRunning()
+	}, time.Millisecond*200, time.Millisecond*10, "Client should stop running after Stop() called")
+
+	// Stopping again should be a no-op
+	assert.NotPanics(func() {
+		c.Stop()
+	}, "Stopping a stopped client should not panic")
 }

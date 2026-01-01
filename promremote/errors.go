@@ -53,3 +53,9 @@ func NewErrFailedToCreateRemoteAPI(err error) error {
 func (e *ErrFailedToCreateRemoteAPI) Error() string {
 	return fmt.Sprintf("Failed to create remote write API: %v", e.err)
 }
+
+type ErrClientAlreadyRunning struct{}
+
+func (e ErrClientAlreadyRunning) Error() string {
+	return "Only a single instance of the client can run at a time"
+}

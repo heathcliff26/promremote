@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/exp/api/remote"
@@ -25,7 +26,11 @@ type Client interface {
 	Registry() *prometheus.Registry
 	// Run periodically collects metrics and sends them to the remote server.
 	// It runs as a background goroutine and does not block the calling thread.
-	Run(interval time.Duration, quit chan bool) error
+	Run(interval time.Duration) error
+	// IsRunning returns true if the client is currently running.
+	IsRunning() bool
+	// Stop stops the remote_write client.
+	Stop()
 }
 
 type client struct {
@@ -36,7 +41,9 @@ type client struct {
 	password string
 	registry *prometheus.Registry
 
-	client *remote.API
+	client  *remote.API
+	running atomic.Bool
+	cancel  context.CancelFunc
 }
 
 type ClientOption func(*client) error
@@ -201,10 +208,18 @@ func (c *client) url() (*url.URL, error) {
 }
 
 // Implement interface method
-func (c *client) Run(interval time.Duration, quit chan bool) error {
+func (c *client) Run(interval time.Duration) error {
+	if !c.running.CompareAndSwap(false, true) {
+		return ErrClientAlreadyRunning{}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c.cancel = cancel
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		defer c.running.Store(false)
 		slog.Debug("Starting remote_write client")
 		for {
 			req, err := c.collect()
@@ -212,7 +227,7 @@ func (c *client) Run(interval time.Duration, quit chan bool) error {
 				slog.Error("Failed to collect metrics for remote_write", "err", err)
 			}
 
-			stats, err := c.client.Write(context.TODO(), remote.WriteV2MessageType, req)
+			stats, err := c.client.Write(ctx, remote.WriteV2MessageType, req)
 			if err != nil {
 				slog.Error("Failed to send metrics to remote endpoint", "err", err)
 			} else {
@@ -221,12 +236,24 @@ func (c *client) Run(interval time.Duration, quit chan bool) error {
 			select {
 			case <-ticker.C:
 
-			case <-quit:
-				slog.Info("Received stop signal, shutting down remote_write client")
+			case <-ctx.Done():
+				slog.Info("Stopping remote_write client")
 				return
 			}
 		}
 	}()
 
 	return nil
+}
+
+// Implement interface method
+func (c *client) IsRunning() bool {
+	return c.running.Load()
+}
+
+// Implement interface method
+func (c *client) Stop() {
+	if c.IsRunning() && c.cancel != nil {
+		c.cancel()
+	}
 }
