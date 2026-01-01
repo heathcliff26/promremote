@@ -55,11 +55,11 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (88.9%)</option>
+				<option value="file0">github.com/heathcliff26/promremote/promremote/client.go (89.6%)</option>
 				
 				<option value="file1">github.com/heathcliff26/promremote/promremote/errors.go (88.9%)</option>
 				
-				<option value="file2">github.com/heathcliff26/promremote/promremote/utils.go (100.0%)</option>
+				<option value="file2">github.com/heathcliff26/promremote/promremote/utils.go (87.5%)</option>
 				
 				</select>
 			</div>
@@ -106,6 +106,7 @@ var (
 )
 
 const httpClientTimeout = 10 * time.Second
+const defaultJobName = "promremote"
 
 type Client interface {
         // Registry returns the Prometheus registry used by the client.
@@ -144,49 +145,65 @@ func WithBasicAuth(username, password string) ClientOption <span class="cov5" ti
         }
 }
 
+// WithInstanceLabel sets the instance label for the metrics.
+// By default the hostname of the machine is used.
+func WithInstanceLabel(instance string) ClientOption <span class="cov3" title="2">{
+        return func(c *client) error </span><span class="cov3" title="2">{
+                if instance == "" </span><span class="cov1" title="1">{
+                        return ErrMissingInstance{}
+                }</span>
+                <span class="cov1" title="1">c.instance = instance
+                return nil</span>
+        }
+}
+
+// WithJobLabel sets the job label for the metrics.
+// By default "promremote" is used.
+func WithJobLabel(job string) ClientOption <span class="cov3" title="2">{
+        return func(c *client) error </span><span class="cov3" title="2">{
+                if job == "" </span><span class="cov1" title="1">{
+                        return ErrMissingJob{}
+                }</span>
+                <span class="cov1" title="1">c.job = job
+                return nil</span>
+        }
+}
+
 // NewWriteClient creates a new remote_write client.
 // Parameters:
 //   - endpoint: URL of the remote_write endpoint
-//   - instance: instance label to attach to all metrics
-//   - job: job label to attach to all metrics
 //   - reg: Prometheus registry to collect metrics from
 //   - opts: optional client options
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) <span class="cov9" title="16">{
+func NewWriteClient(endpoint string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) <span class="cov9" title="18">{
         if endpoint == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingEndpoint{}
         }</span>
-        <span class="cov9" title="15">if instance == "" </span><span class="cov1" title="1">{
-                return nil, ErrMissingInstance{}
-        }</span>
-        <span class="cov8" title="14">if job == "" </span><span class="cov1" title="1">{
-                return nil, ErrMissingJob{}
-        }</span>
-        <span class="cov8" title="13">if reg == nil </span><span class="cov1" title="1">{
+        <span class="cov9" title="17">if reg == nil </span><span class="cov1" title="1">{
                 return nil, ErrMissingRegistry{}
         }</span>
 
-        <span class="cov8" title="12">c := &amp;client{
-                instance: instance,
-                job:      job,
+        <span class="cov9" title="16">c := &amp;client{
+                instance: getHostname(),
+                job:      defaultJobName,
                 client:   newHTTPClientWithTimeout(),
                 registry: reg,
         }
         var err error
-        for _, opt := range opts </span><span class="cov5" title="5">{
+        for _, opt := range opts </span><span class="cov7" title="9">{
                 err = opt(c)
-                if err != nil </span><span class="cov4" title="3">{
+                if err != nil </span><span class="cov5" title="5">{
                         return nil, err
                 }</span>
         }
 
         // Set an empty path to ensure that our own path is not overridden with the default path.
         // Disable retries by setting MaxRetries to -1.
-        <span class="cov7" title="9">c.remoteAPI, err = remote.NewAPI(endpoint, remote.WithAPIPath(""), remote.WithAPIHTTPClient(c.client), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
+        <span class="cov8" title="11">c.remoteAPI, err = remote.NewAPI(endpoint, remote.WithAPIPath(""), remote.WithAPIHTTPClient(c.client), remote.WithAPIBackoff(remote.BackoffConfig{MaxRetries: -1}))
         if err != nil </span><span class="cov1" title="1">{
                 return nil, NewErrFailedToCreateRemoteAPI(err)
         }</span>
 
-        <span class="cov7" title="8">return c, nil</span>
+        <span class="cov7" title="10">return c, nil</span>
 }
 
 // Implement interface method
@@ -313,7 +330,7 @@ func (c *client) Run(interval time.Duration) error <span class="cov5" title="5">
 }
 
 // Implement interface method
-func (c *client) IsRunning() bool <span class="cov8" title="14">{
+func (c *client) IsRunning() bool <span class="cov8" title="13">{
         return c.running.Load()
 }</span>
 
@@ -390,7 +407,10 @@ func (e ErrClientAlreadyRunning) Error() string <span class="cov6" title="2">{
 		
 		<pre class="file" id="file2" style="display: none">package promremote
 
-import "net/http"
+import (
+        "net/http"
+        "os"
+)
 
 type basicAuthRoundTripper struct {
         username string
@@ -409,11 +429,19 @@ func addBasicAuthToHTTPClient(c *http.Client, username, password string) <span c
         }
 }</span>
 
-func newHTTPClientWithTimeout() *http.Client <span class="cov10" title="12">{
+func newHTTPClientWithTimeout() *http.Client <span class="cov9" title="16">{
         return &amp;http.Client{
                 Timeout: httpClientTimeout,
         }
 }</span>
+
+func getHostname() string <span class="cov10" title="17">{
+        hostname, err := os.Hostname()
+        if err == nil </span><span class="cov10" title="17">{
+                return hostname
+        }</span>
+        <span class="cov0" title="0">return "localhost"</span>
+}
 </pre>
 		
 		</div>
