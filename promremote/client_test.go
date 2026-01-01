@@ -18,20 +18,18 @@ import (
 
 func TestNewWriteClient(t *testing.T) {
 	tMatrix := []struct {
-		Name, Endpoint, Instance, Job string
-		Registry                      *prometheus.Registry
-		Error                         string
+		Name, Endpoint string
+		Registry       *prometheus.Registry
+		Error          string
 	}{
-		{"MissingEndpoint", "", "testinstance", "testjob", prometheus.NewRegistry(), ErrMissingEndpoint{}.Error()},
-		{"MissingInstance", "test-endpoint", "", "testjob", prometheus.NewRegistry(), ErrMissingInstance{}.Error()},
-		{"MissingJob", "test-endpoint", "testinstance", "", prometheus.NewRegistry(), ErrMissingJob{}.Error()},
-		{"MissingRegistry", "test-endpoint", "testinstance", "testjob", nil, ErrMissingRegistry{}.Error()},
-		{"CreateRemoteAPIError", "http://%", "testinstance", "testjob", prometheus.NewRegistry(), NewErrFailedToCreateRemoteAPI(fmt.Errorf("")).Error()},
+		{"MissingEndpoint", "", prometheus.NewRegistry(), ErrMissingEndpoint{}.Error()},
+		{"MissingRegistry", "test-endpoint", nil, ErrMissingRegistry{}.Error()},
+		{"CreateRemoteAPIError", "http://%", prometheus.NewRegistry(), NewErrFailedToCreateRemoteAPI(fmt.Errorf("")).Error()},
 	}
 
 	for _, tCase := range tMatrix {
 		t.Run(tCase.Name, func(t *testing.T) {
-			c, err := NewWriteClient(tCase.Endpoint, tCase.Instance, tCase.Job, tCase.Registry)
+			c, err := NewWriteClient(tCase.Endpoint, tCase.Registry)
 
 			require := require.New(t)
 
@@ -41,22 +39,27 @@ func TestNewWriteClient(t *testing.T) {
 	}
 
 	t.Run("Success", func(t *testing.T) {
-		c, err := NewWriteClient("test-endpoint", "testinstance", "testjob", prometheus.NewRegistry())
+		res, err := NewWriteClient("test-endpoint", prometheus.NewRegistry())
+
+		c := res.(*client)
 
 		assert := assert.New(t)
 		require := require.New(t)
 
-		assert.NoError(err, "should not return an error")
-		assert.NotEmpty(c, "Should return a client")
-		httpClient := c.(*client).client
-		require.NotNil(httpClient, "Should have http client")
-		assert.Equal(httpClientTimeout, httpClient.Timeout, "Should have timeout set")
-		assert.Nil(httpClient.Transport, "Should not have a transport")
+		require.NoError(err, "should not return an error")
+		require.NotEmpty(c, "Should return a client")
+
+		assert.Equal(defaultJobName, c.job, "Should have default job name")
+		assert.Equal(getHostname(), c.instance, "Should have instance")
+
+		require.NotNil(c.client, "Should have http client")
+		assert.Equal(httpClientTimeout, c.client.Timeout, "Should have timeout set")
+		assert.Nil(c.client.Transport, "Should not have a transport")
 	})
 }
 
 func TestClientRegistry(t *testing.T) {
-	c, _ := NewWriteClient("test-endpoint", "test", "test", prometheus.NewRegistry())
+	c, _ := NewWriteClient("test-endpoint", prometheus.NewRegistry())
 	var cNil *client = nil
 
 	assert := assert.New(t)
@@ -85,7 +88,7 @@ func TestClientWithBasicAuth(t *testing.T) {
 	require := require.New(t)
 
 	for _, tCase := range tMatrix {
-		c, err := NewWriteClient("test-endpoint", "test", "test", prometheus.NewRegistry(), WithBasicAuth(tCase.Username, tCase.Password))
+		c, err := NewWriteClient("test-endpoint", prometheus.NewRegistry(), WithBasicAuth(tCase.Username, tCase.Password))
 		if tCase.ShouldError {
 			assert.Nil(c, "Should not return a client")
 			assert.ErrorContains(err, "Need both username and password, at least one of them is empty", "Should return error")
@@ -99,11 +102,37 @@ func TestClientWithBasicAuth(t *testing.T) {
 	}
 }
 
+func TestWithInstanceLabel(t *testing.T) {
+	require := require.New(t)
+
+	c, err := NewWriteClient("test-endpoint", prometheus.NewRegistry(), WithInstanceLabel(""))
+	require.ErrorContains(err, ErrMissingInstance{}.Error(), "Should return an error with empty instance label")
+	require.Nil(c, "Should not return a client with empty instance label")
+
+	c, err = NewWriteClient("test-endpoint", prometheus.NewRegistry(), WithInstanceLabel("testinstance"))
+	require.NoError(err, "Should not return an error with valid instance label")
+	require.NotNil(c, "Should return a client with valid instance label")
+	require.Equal("testinstance", c.(*client).instance, "Should have correct instance label")
+}
+
+func TestWithJobLabel(t *testing.T) {
+	require := require.New(t)
+
+	c, err := NewWriteClient("test-endpoint", prometheus.NewRegistry(), WithJobLabel(""))
+	require.ErrorContains(err, ErrMissingJob{}.Error(), "Should return an error with empty job label")
+	require.Nil(c, "Should not return a client with empty job label")
+
+	c, err = NewWriteClient("test-endpoint", prometheus.NewRegistry(), WithJobLabel("testjob"))
+	require.NoError(err, "Should not return an error with valid job label")
+	require.NotNil(c, "Should return a client with valid job label")
+	require.Equal("testjob", c.(*client).job, "Should have correct job label")
+}
+
 func TestCollect(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewBuildInfoCollector())
 
-	c, _ := NewWriteClient("testendpoint", "test", "test", reg)
+	c, _ := NewWriteClient("testendpoint", reg)
 
 	assert := assert.New(t)
 	require := require.New(t)
@@ -127,7 +156,7 @@ func TestRun(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewBuildInfoCollector())
 
-	c, _ := NewWriteClient("testendpoint", "test", "test", reg)
+	c, _ := NewWriteClient("testendpoint", reg)
 
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
@@ -157,7 +186,7 @@ func TestStop(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewBuildInfoCollector())
 
-	c, _ := NewWriteClient("testendpoint", "test", "test", reg)
+	c, _ := NewWriteClient("testendpoint", reg)
 
 	// Stopping before running should be a no-op
 	assert.NotPanics(func() {
@@ -193,7 +222,7 @@ func TestRemoteRequests(t *testing.T) {
 		}))
 		t.Cleanup(server.Close)
 
-		c, _ := NewWriteClient(server.URL, "test", "test", reg, WithBasicAuth("testuser", "testpassword"))
+		c, _ := NewWriteClient(server.URL, reg, WithBasicAuth("testuser", "testpassword"))
 
 		assert.NoError(c.Run(time.Minute), "Should run client without error")
 
@@ -226,7 +255,7 @@ func TestRemoteRequests(t *testing.T) {
 		}))
 		t.Cleanup(server.Close)
 
-		c, _ := NewWriteClient(server.URL, "test", "test", reg)
+		c, _ := NewWriteClient(server.URL, reg)
 
 		assert.NoError(c.Run(time.Minute), "Should run client without error")
 

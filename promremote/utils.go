@@ -1,6 +1,9 @@
 package promremote
 
-import "net/http"
+import (
+	"net/http"
+	"os"
+)
 
 type basicAuthRoundTripper struct {
 	username string
@@ -23,4 +26,12 @@ func newHTTPClientWithTimeout() *http.Client {
 	return &http.Client{
 		Timeout: httpClientTimeout,
 	}
+}
+
+func getHostname() string {
+	hostname, err := os.Hostname()
+	if err == nil {
+		return hostname
+	}
+	return "localhost"
 }
