@@ -20,7 +20,15 @@ var (
 	helpRegex   = regexp.MustCompile("help: \"([^\"]*)\"")
 )
 
-type Client struct {
+type Client interface {
+	// Registry returns the Prometheus registry used by the client.
+	Registry() *prometheus.Registry
+	// Run periodically collects metrics and sends them to the remote server.
+	// It runs as a background goroutine and does not block the calling thread.
+	Run(interval time.Duration, quit chan bool) error
+}
+
+type client struct {
 	endpoint string
 	instance string
 	job      string
@@ -31,12 +39,12 @@ type Client struct {
 	client *remote.API
 }
 
-type ClientOption func(*Client) error
+type ClientOption func(*client) error
 
 // WithBasicAuth configures basic authentication when sending metrics.
 // Returns an error if username or password are empty.
 func WithBasicAuth(username, password string) ClientOption {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if username == "" || password == "" {
 			return ErrMissingAuthCredentials{}
 		}
@@ -53,7 +61,7 @@ func WithBasicAuth(username, password string) ClientOption {
 //   - job: job label to attach to all metrics
 //   - reg: Prometheus registry to collect metrics from
 //   - opts: optional client options
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (*Client, error) {
+func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) {
 	if endpoint == "" {
 		return nil, ErrMissingEndpoint{}
 	}
@@ -67,7 +75,7 @@ func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, op
 		return nil, ErrMissingRegistry{}
 	}
 
-	c := &Client{
+	c := &client{
 		endpoint: endpoint,
 		instance: instance,
 		job:      job,
@@ -94,8 +102,8 @@ func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, op
 	return c, nil
 }
 
-// Registry returns the Prometheus registry used by the client.
-func (c *Client) Registry() *prometheus.Registry {
+// Implement interface method
+func (c *client) Registry() *prometheus.Registry {
 	if c == nil {
 		return nil
 	}
@@ -103,7 +111,7 @@ func (c *Client) Registry() *prometheus.Registry {
 }
 
 // Collect metrics from registry and convert them to TimeSeries
-func (c *Client) collect() (*writev2.Request, error) {
+func (c *client) collect() (*writev2.Request, error) {
 	ch := make(chan prometheus.Metric)
 	go func() {
 		c.registry.Collect(ch)
@@ -179,7 +187,7 @@ func (c *Client) collect() (*writev2.Request, error) {
 }
 
 // Return the url of the remote_write endpoint with optional basic auth credentials
-func (c *Client) url() (*url.URL, error) {
+func (c *client) url() (*url.URL, error) {
 	parsedURL, err := url.Parse(c.endpoint)
 	if err != nil {
 		return nil, err
@@ -192,9 +200,8 @@ func (c *Client) url() (*url.URL, error) {
 	return parsedURL, nil
 }
 
-// Collect metrics and send them to remote server in interval.
-// Does not block main thread execution
-func (c *Client) Run(interval time.Duration, quit chan bool) error {
+// Implement interface method
+func (c *client) Run(interval time.Duration, quit chan bool) error {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
