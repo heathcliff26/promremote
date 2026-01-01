@@ -102,7 +102,15 @@ var (
         helpRegex   = regexp.MustCompile("help: \"([^\"]*)\"")
 )
 
-type Client struct {
+type Client interface {
+        // Registry returns the Prometheus registry used by the client.
+        Registry() *prometheus.Registry
+        // Run periodically collects metrics and sends them to the remote server.
+        // It runs as a background goroutine and does not block the calling thread.
+        Run(interval time.Duration, quit chan bool) error
+}
+
+type client struct {
         endpoint string
         instance string
         job      string
@@ -113,12 +121,12 @@ type Client struct {
         client *remote.API
 }
 
-type ClientOption func(*Client) error
+type ClientOption func(*client) error
 
 // WithBasicAuth configures basic authentication when sending metrics.
 // Returns an error if username or password are empty.
 func WithBasicAuth(username, password string) ClientOption <span class="cov6" title="4">{
-        return func(c *Client) error </span><span class="cov6" title="4">{
+        return func(c *client) error </span><span class="cov6" title="4">{
                 if username == "" || password == "" </span><span class="cov4" title="3">{
                         return ErrMissingAuthCredentials{}
                 }</span>
@@ -135,7 +143,7 @@ func WithBasicAuth(username, password string) ClientOption <span class="cov6" ti
 //   - job: job label to attach to all metrics
 //   - reg: Prometheus registry to collect metrics from
 //   - opts: optional client options
-func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (*Client, error) <span class="cov10" title="12">{
+func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, opts ...ClientOption) (Client, error) <span class="cov10" title="12">{
         if endpoint == "" </span><span class="cov1" title="1">{
                 return nil, ErrMissingEndpoint{}
         }</span>
@@ -149,7 +157,7 @@ func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, op
                 return nil, ErrMissingRegistry{}
         }</span>
 
-        <span class="cov8" title="8">c := &amp;Client{
+        <span class="cov8" title="8">c := &amp;client{
                 endpoint: endpoint,
                 instance: instance,
                 job:      job,
@@ -176,8 +184,8 @@ func NewWriteClient(endpoint, instance, job string, reg *prometheus.Registry, op
         <span class="cov6" title="5">return c, nil</span>
 }
 
-// Registry returns the Prometheus registry used by the client.
-func (c *Client) Registry() *prometheus.Registry <span class="cov4" title="3">{
+// Implement interface method
+func (c *client) Registry() *prometheus.Registry <span class="cov4" title="3">{
         if c == nil </span><span class="cov3" title="2">{
                 return nil
         }</span>
@@ -185,7 +193,7 @@ func (c *Client) Registry() *prometheus.Registry <span class="cov4" title="3">{
 }
 
 // Collect metrics from registry and convert them to TimeSeries
-func (c *Client) collect() (*writev2.Request, error) <span class="cov6" title="4">{
+func (c *client) collect() (*writev2.Request, error) <span class="cov6" title="4">{
         ch := make(chan prometheus.Metric)
         go func() </span><span class="cov6" title="4">{
                 c.registry.Collect(ch)
@@ -261,7 +269,7 @@ func (c *Client) collect() (*writev2.Request, error) <span class="cov6" title="4
 }
 
 // Return the url of the remote_write endpoint with optional basic auth credentials
-func (c *Client) url() (*url.URL, error) <span class="cov8" title="8">{
+func (c *client) url() (*url.URL, error) <span class="cov8" title="8">{
         parsedURL, err := url.Parse(c.endpoint)
         if err != nil </span><span class="cov1" title="1">{
                 return nil, err
@@ -274,9 +282,8 @@ func (c *Client) url() (*url.URL, error) <span class="cov8" title="8">{
         <span class="cov8" title="7">return parsedURL, nil</span>
 }
 
-// Collect metrics and send them to remote server in interval.
-// Does not block main thread execution
-func (c *Client) Run(interval time.Duration, quit chan bool) error <span class="cov1" title="1">{
+// Implement interface method
+func (c *client) Run(interval time.Duration, quit chan bool) error <span class="cov1" title="1">{
         go func() </span><span class="cov1" title="1">{
                 ticker := time.NewTicker(interval)
                 defer ticker.Stop()
