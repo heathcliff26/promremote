@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/heathcliff26/promremote/promremote"
+	"github.com/heathcliff26/promremote/v2/promremote"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

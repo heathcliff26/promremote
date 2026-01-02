@@ -1,4 +1,4 @@
-module github.com/heathcliff26/promremote
+module github.com/heathcliff26/promremote/v2
 
 go 1.24.0
 
