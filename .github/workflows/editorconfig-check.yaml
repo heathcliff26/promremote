@@ -12,6 +12,6 @@ on:
 
 jobs:
   check-editorconfig:
-    uses: heathcliff26/ci/.github/workflows/editorconfig-check.yaml@main
+    uses: heathcliff26/ci/.github/workflows/editorconfig-check.yaml@482d6b77bbafaa616f7b29ee8086e998ceb2ab7c # main
     permissions:
       contents: read

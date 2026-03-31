@@ -8,7 +8,7 @@ on:
 
 jobs:
   generate-reports:
-    uses: heathcliff26/ci/.github/workflows/golang-testcover-report.yaml@main
+    uses: heathcliff26/ci/.github/workflows/golang-testcover-report.yaml@482d6b77bbafaa616f7b29ee8086e998ceb2ab7c # main
     secrets: inherit
     permissions: {}
     with:
