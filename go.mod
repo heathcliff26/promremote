@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_golang/exp v0.0.0-20260810122141-0b4876a6a1bd
+	github.com/prometheus/client_golang/exp v0.0.0-20260812154952-0c5dccd910c0
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 )
