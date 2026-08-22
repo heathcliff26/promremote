@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -151,33 +152,34 @@ func TestCollect(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
-	assert := assert.New(t)
+	synctest.Test(t, func(t *testing.T) {
+		assert := assert.New(t)
 
-	reg := prometheus.NewRegistry()
-	reg.MustRegister(collectors.NewBuildInfoCollector())
+		reg := prometheus.NewRegistry()
+		reg.MustRegister(collectors.NewBuildInfoCollector())
 
-	c, _ := NewWriteClient("testendpoint", reg)
+		c, _ := NewWriteClient("testendpoint", reg)
 
-	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	t.Cleanup(func() {
-		log.SetOutput(os.Stderr)
+		var buf bytes.Buffer
+		log.SetOutput(&buf)
+		t.Cleanup(func() {
+			log.SetOutput(os.Stderr)
+		})
+
+		err := c.Run(time.Minute)
+		assert.NoError(err, "Should not return an error")
+		assert.ErrorContains(c.Run(time.Second), ErrClientAlreadyRunning{}.Error(), "Successive Run() calls should return an error")
+
+		synctest.Sleep(time.Second)
+
+		c.Stop()
+		synctest.Wait()
+		assert.False(c.IsRunning(), "Client should not be running after Stop() called")
+
+		output := buf.String()
+		t.Log("Log output:\n", output)
+		assert.Contains(output, "ERROR Failed to send metrics to remote endpoint err=", "Should output error to log and not fail")
 	})
-
-	err := c.Run(time.Second)
-	assert.NoError(err, "Should not return an error")
-	assert.ErrorContains(c.Run(time.Second), ErrClientAlreadyRunning{}.Error(), "Successive Run() calls should return an error")
-
-	<-time.After(time.Second * 2)
-	c.Stop()
-
-	assert.Eventually(func() bool {
-		return !c.IsRunning()
-	}, time.Millisecond*200, time.Millisecond*10, "Client should stop running after Stop() called")
-
-	output := buf.String()
-	t.Log("Log output:\n", output)
-	assert.Contains(output, "ERROR Failed to send metrics to remote endpoint err=", "Should output error to log and not fail")
 }
 
 func TestStop(t *testing.T) {
@@ -193,12 +195,13 @@ func TestStop(t *testing.T) {
 		c.Stop()
 	}, "Stopping a non-running client should not panic")
 
-	assert.NoError(c.Run(time.Second), "Should start the client")
+	synctest.Test(t, func(t *testing.T) {
+		assert.NoError(c.Run(time.Second), "Should start the client")
 
-	c.Stop()
-	assert.Eventually(func() bool {
-		return !c.IsRunning()
-	}, time.Millisecond*200, time.Millisecond*10, "Client should stop running after Stop() called")
+		c.Stop()
+		synctest.Wait()
+		assert.False(c.IsRunning(), "Client should not be running after Stop() called")
+	})
 
 	// Stopping again should be a no-op
 	assert.NotPanics(func() {
