@@ -1,6 +1,6 @@
 module github.com/heathcliff26/promremote/v2
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/prometheus/client_golang v1.24.1
