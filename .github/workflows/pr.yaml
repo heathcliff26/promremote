@@ -1,0 +1,25 @@
+---
+name: "PR Check"
+
+on:
+  pull_request:
+    branches: ["main"]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+      - labeled
+      - unlabeled
+
+jobs:
+  check-labels:
+    uses: heathcliff26/ci/.github/workflows/label-check.yaml@main
+    permissions:
+      pull-requests: read
+
+  commit-check:
+    uses: heathcliff26/ci/.github/workflows/commit-check.yaml@main
+    permissions:
+      contents: read
+      pull-requests: write
