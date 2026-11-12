@@ -310,7 +310,7 @@ func (c *client) Run(interval time.Duration) error {
                                 <span class="cov0" title="0">slog.Error("Failed to collect metrics for remote_write", "err", err)
 </span>                        }
 
-                        <span class="cov5" title="4">stats, err := c.remoteAPI.Write(ctx, remote.WriteV2MessageType, req)
+                        <span class="cov5" title="4">stats, err := c.remoteAPI.Write(ctx, remote.WriteV2MessageType, remote.WriteModeNone, req)
                         if err != nil </span>{
                                 <span class="cov5" title="4">slog.Error("Failed to send metrics to remote endpoint", "err", err)
 </span>                        } else {
